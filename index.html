@@ -239,12 +239,13 @@ function teamOptions(sel){
 }
 
 /* ---------- run building ---------- */
-function buildRun(capacity){
-  const pool=[...stops.values()].filter(s=>s.status===""&&!outArea(s));
+function buildRun(capacity,team){
+  const big=!!(team&&team.large);
+  const pool=[...stops.values()].filter(s=>s.status===""&&!outArea(s)&&(!s.large||big));   // large trees only go to teams set up for them
   if(!pool.length) return [];
   const pri=pool.filter(s=>s.rebooked);
   const seedFrom=pri.length?pri:pool;
-  const seedScore=s=>km(s,DEPOT)+(capacity>=BIG?0.75*(s.trees-1):-0.5*(s.trees-1));
+  const seedScore=s=>km(s,DEPOT)+(capacity>=BIG?0.75*(s.trees-1):-0.5*(s.trees-1))+(big&&s.large?3:0);
   let seed=seedFrom.reduce((a,b)=>seedScore(b)>seedScore(a)?b:a);
   if(seed.trees>capacity){ const fits=seedFrom.filter(s=>s.trees<=capacity); if(!fits.length) return []; seed=fits.reduce((a,b)=>km(b,DEPOT)>km(a,DEPOT)?b:a); }
   const chosen=[seed]; let load=seed.trees; const left=new Set(pool); left.delete(seed);
@@ -258,7 +259,7 @@ function buildRun(capacity){
       if(dist>6) continue;                                   // never more than ~6 km off the run
       const multi=s.trees-1;
       const pull=capacity>=BIG?0.3*multi:-0.2*multi;          // big vehicles: up to 0.6 km detour for a 3-tree stop; small ones leave multis for big ones
-      const sc=dist-pull-(s.rebooked?0.5:0);
+      const sc=dist-pull-(s.rebooked?0.5:0)-(big&&s.large?0.8:0);
       if(sc<bd){bd=sc;best=s;raw=dist}
     }
     if(!best) break;
@@ -297,7 +298,7 @@ function areaOf(list){const c={};for(const s of list)c[s.area]=(c[s.area]||0)+1;
 function message(r,list){
   const trees=list.reduce((a,s)=>a+s.trees,0);
   const L=[`Primrose Hospice tree collection · Run ${r.n} · ${r.team}${whoRun(r)?" ("+whoRun(r)+")":""}`,`${list.length} stops, ${trees} trees. Start and finish at the depot.`,"",...(driverLink(r)?[`Your run (tap Missed on any you can't collect): ${driverLink(r)}`,""]:[]),...routeLinks(list).map(x=>`${x.label}: ${x.url}`),""];
-  list.forEach((s,i)=>L.push(`${i+1}. ${s.name}, ${short(s.address)}, ${s.postcode}. ${s.trees} ${s.trees>1?"trees":"tree"}, ${s.where}.${s.rebooked?" SECOND VISIT.":""} Tel ${s.phone}`));
+  list.forEach((s,i)=>L.push(`${i+1}. ${s.name}, ${short(s.address)}, ${s.postcode}. ${s.trees} ${s.trees>1?"trees":"tree"}, ${s.where}.${s.rebooked?" SECOND VISIT.":""}${s.large?" LARGE TREE.":""} Tel ${s.phone}`));
   L.push("",`Text back the stop numbers you couldn't collect, e.g. "3 no tree out".${officeNo()?` Office: ${officeNo()}`:""}`);
   return L.join("\n");
 }
@@ -328,7 +329,7 @@ function makeRunPdf(r,list){
     const rows=Math.max(1+addr.length,where.length)+1, h=rows*12+8;
     if(y-h<M+40) newPage();
     const top=y-12;
-    T(M,top,String(i+1),11,true); T(M+22,top,st.name+(st.rebooked?"  (2nd visit)":""),10,true);
+    T(M,top,String(i+1),11,true); T(M+22,top,st.name+(st.rebooked?"  (2nd visit)":"")+(st.large?"  (LARGE TREE)":""),10,true);
     addr.forEach((a,k)=>T(M+22,top-12*(k+1),a,9));
     T(M+22,top-12*(addr.length+1),"Tel "+st.phone,8);
     T(M+305,top,String(st.trees),12,true); where.forEach((a,k)=>T(M+338,top-12*k,a,9));
@@ -368,7 +369,7 @@ function intlPhone(p){let d=String(p||"").replace(/[^\d+]/g,""); if(d.startsWith
 function waUrl(r){const t=teams.get(r.teamId)||{}; const n=intlPhone(t.phone); const txt=encodeURIComponent(message(r,runStops(r))); return n?`https://wa.me/${n}?text=${txt}`:`https://wa.me/?text=${txt}`}
 function runEmail(r,list){
   const links=routeLinks(list).map(x=>`<li><a href="${esc(x.url)}">${esc(x.label)}</a></li>`).join("");
-  const rows=list.map((s,i)=>`<tr><td>${i+1}</td><td><b>${esc(s.name)}</b>${s.rebooked?" (2nd visit)":""}<br>${esc(short(s.address))}, ${esc(s.postcode)}<br>Tel ${esc(s.phone)}</td><td>${s.trees}</td><td>${esc(s.where)}</td><td></td></tr>`).join("");
+  const rows=list.map((s,i)=>`<tr><td>${i+1}</td><td><b>${esc(s.name)}</b>${s.rebooked?" (2nd visit)":""}${s.large?" <b>LARGE TREE</b>":""}<br>${esc(short(s.address))}, ${esc(s.postcode)}<br>Tel ${esc(s.phone)}</td><td>${s.trees}</td><td>${esc(s.where)}</td><td></td></tr>`).join("");
   return {subject:`Primrose Hospice tree collection – Run ${r.n} – ${r.team}`,
    body:`<p>Hello ${esc((teams.get(r.teamId)||{}).contact||r.team)},</p><p><b>${esc(r.team)}</b>${whoRun(r)?" · "+esc(whoRun(r)):""}</p><p>Here is your run: ${list.length} stops, ${r.trees} trees. Start and finish at the depot, ${esc(DEPOT.addr)}.</p>${driverLink(r)?`<p><a href="${esc(driverLink(r))}"><b>Open your run on your phone</b></a>: tap Missed on any stop you can't collect.</p>`:""}<h3>Route</h3><ul>${links}</ul><h3>Stops</h3><table border="1" cellpadding="4" cellspacing="0"><thead><tr><th>#</th><th>Name and address</th><th>Trees</th><th>Where</th><th>Missed?</th></tr></thead><tbody>${rows}</tbody></table><p>Please reply to this email, or text the office${officeNo()?` on <b>${esc(officeNo())}</b>`:""}, with the stop numbers you couldn't collect.</p><p>Thank you for helping Primrose Hospice.<br>Primrose Hospice Christmas Tree Collection · Registered Charity No. 700272</p>`};
 }
@@ -401,18 +402,19 @@ function renderDispatch(main){
   if(preview){
     const list=preview.refs.map(r=>stops.get(r)).filter(Boolean), trees=list.reduce((a,s)=>a+s.trees,0);
     pv=list.length?`<div class="card"><div class="row" style="justify-content:space-between"><h2>Run ${nextRunNo()} · ${esc(areaOf(list))}</h2><span class="chip">${list.length} stops · ${trees}/${preview.capacity} trees</span></div>
-      <ol class="list" style="padding-left:18px;margin:0">${list.map(s=>`<li>${esc(s.name)}, ${esc(short(s.address))} · ${s.trees} ${s.trees>1?"trees":"tree"}${s.rebooked?' <span class="chip warn">2nd visit</span>':""}</li>`).join("")}</ol>
+      <ol class="list" style="padding-left:18px;margin:0">${list.map(s=>`<li>${esc(s.name)}, ${esc(short(s.address))} · ${s.trees} ${s.trees>1?"trees":"tree"}${s.rebooked?' <span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}</li>`).join("")}</ol>
       <div class="row"><button class="btn bad" data-send ${canWrite?"":"disabled"}>Send run &amp; copy message</button><button class="btn ghost" data-rebuild>Rebuild</button><button class="btn ghost" data-cancelpv>Cancel</button></div>
       <div class="hint">Sending marks these stops as on the road, emails the run to the team and copies the message. The run page then has a WhatsApp button with the message ready to send.</div></div>`
       :`<div class="empty">Nothing left that fits ${preview.capacity} trees.</div>`;
   }
+  const bigWait=[...stops.values()].filter(s=>s.status===""&&s.large&&!outArea(s)).reduce((a,s)=>a+s.trees,0);
   main.innerHTML=`<div class="card">
-    <h2>Send the next run</h2>
+    <h2>Send the next run</h2>${bigWait?`<div class="hint" style="margin-bottom:8px"><span class="chip out">Large trees</span> ${bigWait} waiting. Only teams that can take large trees will be given them.</div>`:""}
     <div class="row">
       <div class="field" style="flex:2 1 220px"><label for="team-sel">Volunteer team</label><select id="team-sel" class="${team&&!team.extra&&!nowSlot(team)?"outside":""}">${teamOptions(sel)}</select></div>
       <div class="field" style="flex:0 1 110px"><label for="cap">Trees this run</label><input id="cap" type="number" min="1" max="60" value="${esc(cap)}"></div>
     </div>
-    ${team?`<div class="hint">${esc(team.contact||"")}${team.phone?" · "+esc(team.phone):""}${team.vehicle?" · "+esc(team.vehicle):""}<br>Agreed times: ${esc(slotText(team))}${!team.extra&&!nowSlot(team)?' · <b style="color:var(--bad)">Outside agreed times</b>':""}${team.notes?`<br>Note: ${esc(team.notes)}`:""}</div>`:`<div class="hint">${teams.size?"Teams available now are listed first. Teams outside their agreed times and extras are listed below them.":"No teams yet. Add them on the Teams tab, or ask Claude to load the volunteer list."}</div>`}
+    ${team?`<div class="hint">${esc(team.contact||"")}${team.phone?" · "+esc(team.phone):""}${team.vehicle?" · "+esc(team.vehicle):""}${team.large?" · Takes large trees":""}<br>Agreed times: ${esc(slotText(team))}${!team.extra&&!nowSlot(team)?' · <b style="color:var(--bad)">Outside agreed times</b>':""}${team.notes?`<br>Note: ${esc(team.notes)}`:""}</div>`:`<div class="hint">${teams.size?"Teams available now are listed first. Teams outside their agreed times and extras are listed below them.":"No teams yet. Add them on the Teams tab, or ask Claude to load the volunteer list."}</div>`}
     ${officeNo()?"":`<div class="hint" style="color:var(--bad)">No office mobile set. Add it on the Teams tab so drivers know who to call.</div>`}
     <div class="row"><button class="btn" data-build ${canWrite&&team?"":"disabled"}>Build run</button><span class="hint">${queue.length} addresses waiting (${qTrees} trees)${rb?`, ${rb} rebooked`:""}</span></div>
   </div>
@@ -453,7 +455,7 @@ function stopCard(s,i,r){
   const one=encodeURIComponent(short(s.address)+", "+s.postcode);
   return `<div class="stop" data-s="${esc(s.status)}">
    <div class="st-top"><div class="st-n">${i}</div>
-    <div class="st-body"><div class="st-name">${esc(s.name)} ${s.rebooked?'<span class="chip warn">2nd visit</span>':""}</div>
+    <div class="st-body"><div class="st-name">${esc(s.name)} ${s.rebooked?'<span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}</div>
      <div class="st-addr"><a href="https://www.google.com/maps/search/?api=1&query=${one}" target="_blank" rel="noopener">${esc(short(s.address))}, ${esc(s.postcode)}</a></div>
      <div class="st-info"><span>Tree: <b>${esc(s.where)}</b></span><span>Phone: <b>${esc(s.phone)}</b></span></div></div>
     <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
@@ -505,7 +507,7 @@ let PC=null, pcLoading=null;
 function loadPC(){ if(PC) return Promise.resolve(PC); if(!pcLoading) pcLoading=fetch("postcodes.json").then(r=>{if(!r.ok) throw new Error(r.status); return r.json()}).then(j=>PC=j).catch(e=>{pcLoading=null; throw e}); return pcLoading }
 function normPC(p){const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); return k.length>=5?k.slice(0,-3)+" "+k.slice(-3):k}
 function geocode(p){ const k=normPC(p).replace(" ",""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1],how:"postcode"}; const sec=k.slice(0,-2); if(PC.sector[sec]) return {lat:PC.sector[sec][0],lon:PC.sector[sec][1],how:"sector"}; return null }
-function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of area</span>'; if(s.status===""&&authFar(s)) return `<span class="chip warn">Waiting · authorised ${Math.round(km(s,DEPOT))} km</span>`; if(s.status===""&&s.skippedRun) return '<span class="chip grey">Waiting · skipped</span>'; return {"":`<span class="chip grey">Waiting</span>`,out:'<span class="chip out">On the road</span>',Collected:'<span class="chip done">Collected</span>',Missed:'<span class="chip bad">Missed</span>',Closed:'<span class="chip grey">Closed</span>'}[s.status]||"" }
+function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of area</span>'; if(s.status===""&&authFar(s)) return `<span class="chip warn">Waiting · authorised ${Math.round(km(s,DEPOT))} km</span>`; if(s.status===""&&s.skippedRun) return `<span class="chip grey">Waiting · skipped${s.skipReason?": "+esc(s.skipReason):""}</span>`; return {"":`<span class="chip grey">Waiting</span>`,out:'<span class="chip out">On the road</span>',Collected:'<span class="chip done">Collected</span>',Missed:'<span class="chip bad">Missed</span>',Closed:'<span class="chip grey">Closed</span>'}[s.status]||"" }
 function renderAddresses(main){
   const q=($("#addr-q")?.value??view.q??"").trim().toLowerCase();
   const all=[...stops.values()].sort((a,b)=>a.ref-b.ref);
@@ -514,7 +516,7 @@ function renderAddresses(main){
   main.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2>Addresses (${all.length})</h2><button class="btn" data-addstop ${canWrite?"":"disabled"}>Add a collection</button></div>
    <div class="field"><label for="addr-q">Search name, address, postcode or phone</label><input id="addr-q" type="text" value="${esc(q)}" placeholder="e.g. Hill Lane or B60 3"></div>
    <div class="hint">${q?`${hits.length} match${hits.length===1?"":"es"}`:"Showing the first 40. Search to find others."}${hits.length>40?" · showing the first 40":""}</div></div>
-  <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · Tel ${esc(s.phone)} · ${esc(s.email||"No email")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
+  <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${s.large?' <span class="chip out">Large tree</span>':""}${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · Tel ${esc(s.phone)} · ${esc(s.email||"No email")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
 function editStop(s){
@@ -531,6 +533,7 @@ function editStop(s){
      <div class="row"><div class="field"><label for="e-phone">Phone</label><input id="e-phone" type="text" inputmode="tel" value="${esc(s.phone)}"></div><div class="field" style="flex:0 1 90px"><label for="e-trees">Trees</label><input id="e-trees" type="number" min="1" max="20" value="${esc(s.trees)}"></div></div>
      <div class="field"><label for="e-email">Email</label><input id="e-email" type="email" value="${esc(s.email)}"></div>
      <div class="field"><label for="e-where">Where the tree is</label><input id="e-where" type="text" value="${esc(s.where)}"></div>
+     <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="e-large" ${s.large?"checked":""}> Large tree (only teams set up for large trees can collect it)</label>
      <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">${isNew?"Add collection":"Save"}</button></div></div>`;
     const geoMsg=()=>{ const g=geocode($("#e-pc").value); const el=$("#e-geo");
       if(!normPC($("#e-pc").value)){ el.textContent=""; return null }
@@ -543,7 +546,7 @@ function editStop(s){
       if(!name||!street||!town||!pc||!(trees>0)){ toast("Fill in name, street, town, postcode and trees"); return }
       const g=geocode(pc); t.disabled=true; t.textContent="Saving…";
       const county=parts[2]||"Worcestershire";
-      const data={name:name.slice(0,80),address:`${street}, ${town}, ${county}`.slice(0,160),area:town,postcode:pc,phone:$("#e-phone").value.trim().slice(0,30),email:$("#e-email").value.trim().slice(0,120),where:$("#e-where").value.trim().slice(0,60)||"Front garden",trees:Math.min(trees,20),lat:g?g.lat:null,lon:g?g.lon:null};
+      const data={name:name.slice(0,80),address:`${street}, ${town}, ${county}`.slice(0,160),area:town,postcode:pc,phone:$("#e-phone").value.trim().slice(0,30),email:$("#e-email").value.trim().slice(0,120),where:$("#e-where").value.trim().slice(0,60)||"Front garden",large:$("#e-large").checked,trees:Math.min(trees,20),lat:g?g.lat:null,lon:g?g.lon:null};
       let ok;
       if(isNew){ const ref=Math.max(0,...[...stops.keys()])+1; ok=await put("stops/"+sid(ref),{ref,...data,status:"",run:null,attempts:0,rebooked:false,note:"",added:true,addedAt:new Date().toISOString(),addedBy:me}); if(ok) toast(`${name} added${g&&km(g,DEPOT)<=AREA_KM?" to the waiting list":" (out of area)"}`) }
       else { ok=await patch("stops/"+sid(s.ref),{...data,editedAt:new Date().toISOString(),editedBy:me}); if(ok) toast(`${name} updated`) }
@@ -564,10 +567,11 @@ function renderTeams(main){
    <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(d=>`<label><input type="checkbox" id="t-d-${d}"> ${DAY_LABEL[d]}</label>`).join("")}</div>
    <div class="row"><div class="field" style="flex:0 1 130px"><label for="t-from">From</label><input id="t-from" type="time" value="09:00"></div><div class="field" style="flex:0 1 130px"><label for="t-to">To</label><input id="t-to" type="time" value="15:30"></div></div></div>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
+   <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees/run</th><th>Agreed times</th><th>Runs</th><th>Trees collected</th><th></th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -673,13 +677,13 @@ async function act(b,d){
   if("build" in d||"rebuild" in d){
     const teamId=$("#team-sel")?.value||preview?.teamId; const t=teams.get(teamId); if(!t){toast("Choose a team first");return}
     const cap=Math.max(1,Math.min(60,parseInt($("#cap")?.value,10)||t.capacity));
-    const list=buildRun(cap); preview={teamId,capacity:cap,refs:list.map(s=>s.ref)}; render(); return;
+    const list=buildRun(cap,t); preview={teamId,capacity:cap,refs:list.map(s=>s.ref)}; render(); return;
   }
   if("cancelpv" in d){preview=null;render();return}
   if("send" in d){
     const t=teams.get(preview?.teamId); if(!t||!preview.refs.length) return;
     const list=preview.refs.map(r=>stops.get(r)).filter(s=>s&&s.status==="");
-    if(list.length!==preview.refs.length){toast("Someone else took some of these stops. Rebuilding.");preview.refs=buildRun(preview.capacity).map(s=>s.ref);render();return}
+    if(list.length!==preview.refs.length){toast("Someone else took some of these stops. Rebuilding.");preview.refs=buildRun(preview.capacity,t).map(s=>s.ref);render();return}
     const n=nextRunNo(), id="R"+Date.now().toString(36), now=new Date().toISOString();
     const r={id,n,token:DRIVER_URL?(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,""):undefined,teamId:t.id,team:t.name,capacity:preview.capacity,refs:list.map(s=>s.ref),trees:list.reduce((a,s)=>a+s.trees,0),state:"out",sentAt:now,by:me,outside:!t.extra&&!nowSlot(t),extra:!!t.extra};
     if(!await put("runs/"+id,r)) return;
@@ -735,9 +739,10 @@ async function act(b,d){
     const from=$("#t-from").value||"09:00", to=$("#t-to").value||"15:30";
     const slots=Object.keys(EVENT_DAYS).filter(k=>$("#t-d-"+k).checked).map(day=>({day,from,to}));
     const id="t"+Date.now().toString(36);
-    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:$("#t-contact").value.trim().slice(0,80),slots,extra:$("#t-extra").checked})) toast(`${name} added`);
+    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:$("#t-contact").value.trim().slice(0,80),slots,extra:$("#t-extra").checked,large:$("#t-large").checked})) toast(`${name} added`);
     return;
   }
+  if(d.tlarge){ const t=teams.get(d.tlarge); if(t&&await patch("teams/"+t.id,{large:!t.large})) toast(`${t.name}: ${t.large?"no longer takes":"now takes"} large trees`); return }
   if(d.delteam){ try{ await db.doc("teams/"+d.delteam).delete(); toast("Team removed") }catch(e){ fail(e) } return }
 }
 // a stop object helper used in renderMisses
