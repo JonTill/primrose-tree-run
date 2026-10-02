@@ -2,5 +2,6 @@
 window.TREERUN_CONFIG = {
   url: "https://hkwlffmtqaenuzkbhijc.supabase.co",
   anonKey: "sb_publishable_iSGteojvcJdXW29wWI-6BQ_65psGNUR",
-  driverUrl: "https://jontill.github.io/primrose-tree-run/driver.html"
+  driverUrl: "https://jontill.github.io/primrose-tree-run/driver.html",
+  emailMode: "mailto"
 };
