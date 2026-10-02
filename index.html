@@ -303,6 +303,10 @@ function message(r,list){
   return L.join("\n");
 }
 const DRIVER_URL=(window.TREERUN_CONFIG||{}).driverUrl||"";
+const MAILTO=(window.TREERUN_CONFIG||{}).emailMode==="mailto";   // emails open in the user's own email program instead of being sent by the page
+function htmlText(h){return String(h).replace(/<a [^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g,"$2: $1").replace(/<li>/g,"- ").replace(/<\/(p|h3|ul|ol)>/g,"\n\n").replace(/<\/(li|tr)>/g,"\n").replace(/<br\s*\/?>/g,"\n").replace(/<\/td>/g,"  ").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\n{3,}/g,"\n\n").trim()}
+function openMail({to=[],bcc=[],subject="",body="",text=""}){const q=[`subject=${encodeURIComponent(subject)}`,`body=${encodeURIComponent(text||htmlText(body))}`]; if(bcc.length) q.unshift(`bcc=${[...new Set(bcc)].map(encodeURIComponent).join(",")}`); const a=document.createElement("a"); a.href=`mailto:${to.map(encodeURIComponent).join(",")}?${q.join("&")}`; document.body.appendChild(a); a.click(); a.remove(); return true}
+const MAIL_TOAST="Email opened in your email program. Check it and press Send.";
 const driverLink=r=>DRIVER_URL&&r.token?`${DRIVER_URL}#${r.token}`:"";
 function nextRunNo(){let m=0;for(const r of runs.values()) m=Math.max(m,r.n||0);return m+1}
 
@@ -376,6 +380,7 @@ function runEmail(r,list){
 async function emailRun(r){
   const t=teams.get(r.teamId)||{};
   if(!t.email){toast(`No email address for ${r.team}`);return false}
+  if(MAILTO){ openMail({to:[t.email],subject:runEmail(r,runStops(r)).subject,text:message(r,runStops(r))}); await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); toast(MAIL_TOAST); return true }
   if(!mcp){toast("Emails need the Microsoft 365 connector. Open the page in Claude with it connected.");return false}
   const {subject,body}=runEmail(r,runStops(r));
   try{ await mcp.callTool(M365,"outlook_send_mail",{to:[t.email],subject,body,bodyType:"html"}); await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); return true }
@@ -477,9 +482,9 @@ function renderMisses(main){
   const replied=ms.filter(s=>s.replyAt&&s.attempts===1);
   const dis=canWrite&&mcp?"":"disabled";
   main.innerHTML=`${!mcp&&tried?`<div class="banner">Emails need the Microsoft 365 connector. Open this page in Claude, signed in, with Microsoft 365 connected.</div>`:""}
-  <div class="card"><div class="hint">First miss: email the customer and ask them to reply once the tree is out. Replies are found in your Outlook inbox. One rebook only. A second miss gets a final email and the stop is closed.</div>
+  <div class="card"><div class="hint">First miss: email the customer and ask them to reply once the tree is out. ${MAILTO?"Emails open in your own email program; check and press Send. Replies come to your inbox: tap <b>Customer replied</b> on the card when one arrives.":"Replies are found in your Outlook inbox."} One rebook only. A second miss gets a final email and the stop is closed.</div>
    <div class="row"><button class="btn bad" data-emailall ${dis||(!toEmail.length?"disabled":"")}>Email ${toEmail.length} customer${toEmail.length===1?"":"s"}</button>
-   <button class="btn blue" data-checkreplies ${dis}>Check for replies</button>
+   ${MAILTO?"":`<button class="btn blue" data-checkreplies ${dis}>Check for replies</button>`}
    <button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>
    ${lastCheck?`<div class="hint">Last checked ${tm(lastCheck)}</div>`:""}</div>
   ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are more than ${AREA_KM} km (10 miles) from Bromsgrove, so they're not planned. Up to ${AUTH_KM} km, the office can tap <b>Authorise collection</b> and it goes on the list. Otherwise email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
@@ -494,7 +499,7 @@ function missCard(s){
   if(s.status==="Closed"){ state=s.closedReason?`<span class="chip grey">Closed · ${esc(s.closedReason)}</span>`:`<span class="chip grey">Closed · final email ${tm(s.finalEmailAt)}</span>`; }
   else if(second){ state=`<span class="chip bad">Missed twice</span>`; acts=`<button class="btn bad" data-final="${s.ref}" ${dis}>Send final email &amp; close</button>`; }
   else if(s.replyAt){ state=`<span class="chip done">Replied ${tm(s.replyAt)}</span>`; acts=`<button class="btn" data-rebook="${s.ref}" ${canWrite?"":"disabled"}>Rebook</button>`; }
-  else if(s.missedEmailAt){ state=`<span class="chip warn">Emailed ${tm(s.missedEmailAt)} · waiting</span>`; acts=`<button class="btn ghost" data-rebook="${s.ref}" ${canWrite?"":"disabled"}>Rebook anyway</button>`; }
+  else if(s.missedEmailAt){ state=`<span class="chip warn">Emailed ${tm(s.missedEmailAt)} · waiting</span>`; acts=`${MAILTO?`<button class="btn" data-replied="${s.ref}" ${canWrite?"":"disabled"}>Customer replied</button><button class="btn ghost" data-email="${s.ref}" ${dis}>Open email again</button>`:""}<button class="btn ghost" data-rebook="${s.ref}" ${canWrite?"":"disabled"}>Rebook anyway</button>`; }
   else { state=`<span class="chip bad">Not emailed yet</span>`; acts=`<button class="btn bad" data-email="${s.ref}" ${dis}>Email customer</button>`; }
   return `<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${state}</div>
    <div>${esc(short(s.address))}, ${esc(s.postcode)}</div>
@@ -619,6 +624,7 @@ function mcpMsg(e){
 async function sendEmail(s,kind){
   if(!s.email){toast(`No email address for ${s.name}`);return false}
   const {subject,body}=emailBodies(s,kind);
+  if(MAILTO){ openMail({to:[s.email],subject,body}); toast(MAIL_TOAST); return true }
   try{ await mcp.callTool(M365,"outlook_send_mail",{to:[s.email],subject,body,bodyType:"html"}); return true }
   catch(e){ toast(mcpMsg(e)); return false }
 }
@@ -692,7 +698,7 @@ async function act(b,d){
     const ok=await copyText(message(r,list));
     preview=null; toast(ok?`Run ${n} sent · message copied · emailing ${t.name}…`:`Run ${n} sent · emailing ${t.name}…`);
     view={tab:"runs",run:id}; save(); render(); window.scrollTo(0,0);
-    emailRun(r).then(em=>{ if(em) toast(`Run ${n} emailed to ${t.email}`) });
+    if(!MAILTO) emailRun(r).then(em=>{ if(em) toast(`Run ${n} emailed to ${t.email}`) });
     return;
   }
   if(d.emailrun){ const r=runs.get(d.emailrun); b.textContent="Sending…"; if(await emailRun(r)) toast(`Run ${r.n} emailed`); render(); return }
@@ -716,14 +722,19 @@ async function act(b,d){
     if(n<todo.length){ toast(`${todo.length-n} stop${todo.length-n===1?"":"s"} didn't save. Tap Complete run again.`); render(); return }
     await patch("runs/"+r.id,{state:"back",backAt:now}); toast(`Run ${r.n} complete · ${n} collected`); return;
   }
+  if(d.replied){ const s=stops.get(+d.replied); if(await patch("stops/"+sid(s.ref),{replyAt:new Date().toISOString(),replyBy:me||""})) toast(`${s.name} marked as replied. Tap Rebook to send a team again.`); return }
   if(d.email){ const s=stops.get(+d.email); if(await sendEmail(s,"missed")){ await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
   if("emailall" in d){
+    if(MAILTO){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt&&s.email).slice(0,40); if(!list.length){toast("No one to email");return}
+      openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: we couldn't find your tree",text:"Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers called at your address but couldn't find your tree.\n\nIf your tree is now out and ready, please reply to this email with your name and address and we'll arrange one more visit before the end of Sunday 10 January. Please leave it somewhere our volunteers can see it from the road, for example at the front of the house or by the drive.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272"});
+      const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{missedEmailAt:now,emailBulk:true}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
     const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt);
     let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"missed")) break; await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) }
     toast(`${n} email${n===1?"":"s"} sent`); render(); return;
   }
   if("checkreplies" in d){ b.textContent="Checking…"; await checkReplies(); return }
   if(d.oaemail){ const s=stops.get(+d.oaemail); if(await sendEmail(s,"outarea")){ await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
+  if("oaemailall" in d&&MAILTO){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email).slice(0,40); if(!list.length) return; openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: outside our collection area",text:`Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. We only collect within 16 km (10 miles) of Bromsgrove, and the address you gave us is outside that area, so we can't collect your tree.\n\nPlease contact the office${officeNo()?" on "+officeNo():""} to arrange a refund.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272`}); const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{oaEmailAt:now}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
   if("oaemailall" in d){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email); let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"outarea")) break; await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) } toast(`${n} email${n===1?"":"s"} sent`); render(); return }
   if(d.edit){ await editStop(stops.get(+d.edit)); return }
   if("addstop" in d){ await editStop(null); return }
