@@ -52,7 +52,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible,select:focus-visible
 label{font-weight:700;font-size:.85rem}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 160px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
-select,input[type=text],input[type=number],input[type=time],input[type=email]{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%;min-width:0}
+select,input[type=text],input[type=number],input[type=time],input[type=email],input[type=tel]{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%;min-width:0}
 .btn{font:700 .92rem var(--body);padding:11px 14px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer;text-decoration:none;display:inline-block;text-align:center}
 .btn.blue{background:var(--blue);border-color:var(--blue);color:var(--blue-fg)}
 .btn.ghost{background:var(--surface);color:var(--fg);border-color:var(--line)}
@@ -749,7 +749,7 @@ async function act(b,d){
   if("addteam" in d){
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
     if(!name||!(cap>0)){toast("Enter a team name and trees per run");return}
-    const contact=$("#t-contact").value.trim(), phone=$("#t-phone").value.trim(), email=$("#t-email").value.trim(), vehicle=$("#t-vehicle").value;
+    const contact=$("#t-contact").value.trim(), phone=(p=>{const d=p.replace(/[^\d+]/g,""); return /^0\d{10}$/.test(d)?d.slice(0,5)+" "+d.slice(5):p})($("#t-phone").value.trim()), email=$("#t-email").value.trim(), vehicle=$("#t-vehicle").value;
     if(!contact||!phone||!vehicle){toast("Enter the contact name, phone and vehicle");return}
     if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("That email address doesn't look right");return}
     const from=$("#t-from").value||"09:00", to=$("#t-to").value||"15:30";
