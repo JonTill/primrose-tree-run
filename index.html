@@ -568,7 +568,8 @@ function renderTeams(main){
   <div class="card" style="margin-top:10px"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Trees per run</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
-   <div class="field"><label for="t-contact">Contact</label><input id="t-contact" type="text" placeholder="Name and mobile"></div></div>
+   </div>
+   <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-contact">Contact name</label><input id="t-contact" type="text" autocomplete="off" placeholder="e.g. Karen Bannister"></div><div class="field" style="flex:1 1 140px"><label for="t-phone">Phone</label><input id="t-phone" type="tel" inputmode="tel" placeholder="07700 900000"></div><div class="field" style="flex:2 1 200px"><label for="t-email">Email</label><input id="t-email" type="email" placeholder="name@example.com"></div><div class="field" style="flex:1 1 170px"><label for="t-vehicle">Vehicle</label><select id="t-vehicle"><option value="">Choose…</option><option>Estate car</option><option>Estate car &amp; trailer</option><option>Pickup truck</option><option>Small van</option><option>Transit van</option><option>Large van / Luton</option><option>Other</option></select></div></div>
    <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(d=>`<label><input type="checkbox" id="t-d-${d}"> ${DAY_LABEL[d]}</label>`).join("")}</div>
    <div class="row"><div class="field" style="flex:0 1 130px"><label for="t-from">From</label><input id="t-from" type="time" value="09:00"></div><div class="field" style="flex:0 1 130px"><label for="t-to">To</label><input id="t-to" type="time" value="15:30"></div></div></div>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
@@ -576,7 +577,7 @@ function renderTeams(main){
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees/run</th><th>Agreed times</th><th>Runs</th><th>Trees collected</th><th></th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -668,6 +669,7 @@ async function checkReplies(){
 async function rebook(s){ await patch("stops/"+sid(s.ref),{status:"",run:null,rebooked:true,rebookedAt:new Date().toISOString()}) }
 
 document.addEventListener("change",e=>{
+  if(e.target.id==="t-vehicle"){ const l=$("#t-large"); if(l) l.checked=/transit|trailer|luton/i.test(e.target.value) }
   if(e.target.id==="team-sel"){ preview=null; const t=teams.get(e.target.value); render(); const c=$("#cap"); if(c&&t) c.value=t.capacity; }
 });
 document.addEventListener("click",async e=>{
@@ -747,10 +749,13 @@ async function act(b,d){
   if("addteam" in d){
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
     if(!name||!(cap>0)){toast("Enter a team name and trees per run");return}
+    const contact=$("#t-contact").value.trim(), phone=$("#t-phone").value.trim(), email=$("#t-email").value.trim(), vehicle=$("#t-vehicle").value;
+    if(!contact||!phone||!vehicle){toast("Enter the contact name, phone and vehicle");return}
+    if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("That email address doesn't look right");return}
     const from=$("#t-from").value||"09:00", to=$("#t-to").value||"15:30";
     const slots=Object.keys(EVENT_DAYS).filter(k=>$("#t-d-"+k).checked).map(day=>({day,from,to}));
     const id="t"+Date.now().toString(36);
-    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:$("#t-contact").value.trim().slice(0,80),slots,extra:$("#t-extra").checked,large:$("#t-large").checked})) toast(`${name} added`);
+    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,extra:$("#t-extra").checked,large:$("#t-large").checked})) toast(`${name} added`);
     return;
   }
   if(d.tlarge){ const t=teams.get(d.tlarge); if(t&&await patch("teams/"+t.id,{large:!t.large})) toast(`${t.name}: ${t.large?"no longer takes":"now takes"} large trees`); return }
@@ -766,7 +771,7 @@ render();
   if(u){ try{me=await u.id()}catch(e){} try{const c=await u.can("data.write"); if(c===false){canWrite=false;$("#ro").hidden=false}}catch(e){} }
   if(!db){render();return}
   const keep=()=>{const ae=document.activeElement; return ae&&ae.id&&ae.tagName!=="BUTTON"?{id:ae.id,val:ae.value}:null};
-  const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-from","t-to","office-phone"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
+  const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
     render(); for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id); if(el&&id!=="team-sel") el.value=v; else if(el&&teams.has(v)) el.value=v}
     if(k){const el=document.getElementById(k.id); if(el) el.focus()}};
   db.collection("stops").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; redraw()},()=>toast("Live updates stopped. Reload the page."));
