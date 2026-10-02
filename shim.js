@@ -71,7 +71,7 @@
 
   let me = null;
   const user = {
-    async id(){ const {data} = await sb.auth.getUser(); return data.user ? "u_" + data.user.id.replace(/-/g,"").slice(0,22) : null; },
+    async id(){ const {data} = await sb.auth.getUser(); return data.user ? (data.user.email || data.user.id) : null; },
     async me(){ const {data} = await sb.auth.getUser(); return {id: await this.id(), name: data.user?.email || "", guest:false}; },
     async can(){ const {data} = await sb.from("office_users").select("email").limit(1); return !!(data && data.length); },
     isOwner(){ return false; }, canEdit(){ return true; }, async profiles(){ return {}; }
