@@ -166,7 +166,7 @@ const EVENT_DAYS={fri:"2027-01-08",sat:"2027-01-09",sun:"2027-01-10"};
 const DAY_LABEL={fri:"Fri 8",sat:"Sat 9",sun:"Sun 10"};
 const LEG=9;        // Google Maps links take up to 9 stops, so longer runs are split into route parts
 const MAX_STOPS=30; // sanity cap per run
-const AREA_KM=16;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
+const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
 const TABS=[["dispatch","Dispatch"],["runs","Runs"],["misses","Need attention"],["addresses","Addresses"],["teams","Teams"]];
@@ -186,7 +186,8 @@ const km=(a,b)=>Math.hypot((a.lat-b.lat)*111.0,(a.lon-b.lon)*111.32*Math.cos(52.
 const tm=iso=>iso?new Date(iso).toLocaleString("en-GB",{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
 
 /* ---------- tallies ---------- */
-const outArea=s=>s.status===""&&(s.lat==null||km(s,DEPOT)>AREA_KM);
+const outArea=s=>s.status===""&&(s.lat==null||km(s,DEPOT)>(s.oaAuth?AUTH_KM:AREA_KM));
+const authFar=s=>s.oaAuth&&s.lat!=null&&km(s,DEPOT)>AREA_KM;
 function treeTally(){
   const t={collected:0,outstanding:0,onRoad:0,missed:0,closed:0,total:0};
   for(const s of stops.values()){
@@ -262,6 +263,14 @@ function buildRun(capacity){
     }
     if(!best) break;
     chosen.push(best); load+=best.trees; left.delete(best);
+  }
+  if(chosen.some(authFar)){                                   // authorised out-of-area run: top up with stops on the way back to the depot
+    const far=chosen.reduce((a,b)=>km(b,DEPOT)>km(a,DEPOT)?b:a), direct=km(far,DEPOT);
+    while(chosen.length<MAX_STOPS && load<capacity){
+      let best=null,bd=1e9;
+      for(const s of left){ if(load+s.trees>capacity) continue; const det=km(far,s)+km(s,DEPOT)-direct; if(det<=3&&det<bd){bd=det;best=s} }
+      if(!best) break; chosen.push(best); load+=best.trees; left.delete(best);
+    }
   }
   // order: nearest neighbour from the depot
   const ordered=[]; let cur=DEPOT; const rest=new Set(chosen);
@@ -471,8 +480,8 @@ function renderMisses(main){
    <button class="btn blue" data-checkreplies ${dis}>Check for replies</button>
    <button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>
    ${lastCheck?`<div class="hint">Last checked ${tm(lastCheck)}</div>`:""}</div>
-  ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are more than ${AREA_KM} km (10 miles) from Bromsgrove, so they're never planned. Email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
-  <div class="row" style="margin-bottom:8px"><button class="btn bad" data-oaemailall ${canWrite&&mcp&&oa.some(s=>!s.oaEmailAt&&s.email)?"":"disabled"}>Email ${oa.filter(s=>!s.oaEmailAt&&s.email).length} out-of-area customer${oa.filter(s=>!s.oaEmailAt&&s.email).length===1?"":"s"}</button></div><div class="list">${oa.map(s=>`<div class="miss" style="border-color:var(--bad)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip bad">${s.lat==null?"Postcode not found":Math.round(km(s,DEPOT))+" km away"}</span></div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">Tel ${esc(s.phone)} · ${esc(s.email||"No email")}</div>${s.oaEmailAt?`<div><span class="chip warn">Emailed ${tm(s.oaEmailAt)}: refund via office</span></div>`:""}<div class="steps">${s.oaEmailAt?"":`<button class="btn bad" data-oaemail="${s.ref}" ${canWrite&&mcp&&s.email?"":"disabled"}>Email customer</button>`}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-oaremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button></div></div>`).join("")}</div>`:""})()}
+  ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are more than ${AREA_KM} km (10 miles) from Bromsgrove, so they're not planned. Up to ${AUTH_KM} km, the office can tap <b>Authorise collection</b> and it goes on the list. Otherwise email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
+  <div class="row" style="margin-bottom:8px"><button class="btn bad" data-oaemailall ${canWrite&&mcp&&oa.some(s=>!s.oaEmailAt&&s.email)?"":"disabled"}>Email ${oa.filter(s=>!s.oaEmailAt&&s.email).length} out-of-area customer${oa.filter(s=>!s.oaEmailAt&&s.email).length===1?"":"s"}</button></div><div class="list">${oa.map(s=>`<div class="miss" style="border-color:var(--bad)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip bad">${s.lat==null?"Postcode not found":Math.round(km(s,DEPOT))+" km away"}</span></div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">Tel ${esc(s.phone)} · ${esc(s.email||"No email")}</div>${s.oaEmailAt?`<div><span class="chip warn">Emailed ${tm(s.oaEmailAt)}: refund via office</span></div>`:""}<div class="steps">${s.oaEmailAt?"":`<button class="btn bad" data-oaemail="${s.ref}" ${canWrite&&mcp&&s.email?"":"disabled"}>Email customer</button>`}${s.lat!=null&&km(s,DEPOT)<=AUTH_KM?`<button class="btn" data-oaauth="${s.ref}" ${canWrite?"":"disabled"}>Authorise collection</button>`:`<span class="hint">Over ${AUTH_KM} km: can't be authorised</span>`}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-oaremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button></div></div>`).join("")}</div>`:""})()}
   <h3>Missed (${ms.length})</h3>
   ${ms.length?`<div class="list">${ms.map(missCard).join("")}</div>`:`<div class="empty">No missed trees.</div>`}
   ${closed.length?`<h3>Closed (${closed.length})</h3><div class="list">${closed.map(missCard).join("")}</div>`:""}`;
@@ -496,7 +505,7 @@ let PC=null, pcLoading=null;
 function loadPC(){ if(PC) return Promise.resolve(PC); if(!pcLoading) pcLoading=fetch("postcodes.json").then(r=>{if(!r.ok) throw new Error(r.status); return r.json()}).then(j=>PC=j).catch(e=>{pcLoading=null; throw e}); return pcLoading }
 function normPC(p){const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); return k.length>=5?k.slice(0,-3)+" "+k.slice(-3):k}
 function geocode(p){ const k=normPC(p).replace(" ",""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1],how:"postcode"}; const sec=k.slice(0,-2); if(PC.sector[sec]) return {lat:PC.sector[sec][0],lon:PC.sector[sec][1],how:"sector"}; return null }
-function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of area</span>'; return {"":`<span class="chip grey">Waiting</span>`,out:'<span class="chip out">On the road</span>',Collected:'<span class="chip done">Collected</span>',Missed:'<span class="chip bad">Missed</span>',Closed:'<span class="chip grey">Closed</span>'}[s.status]||"" }
+function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of area</span>'; if(s.status===""&&authFar(s)) return `<span class="chip warn">Waiting · authorised ${Math.round(km(s,DEPOT))} km</span>`; if(s.status===""&&s.skippedRun) return '<span class="chip grey">Waiting · skipped</span>'; return {"":`<span class="chip grey">Waiting</span>`,out:'<span class="chip out">On the road</span>',Collected:'<span class="chip done">Collected</span>',Missed:'<span class="chip bad">Missed</span>',Closed:'<span class="chip grey">Closed</span>'}[s.status]||"" }
 function renderAddresses(main){
   const q=($("#addr-q")?.value??view.q??"").trim().toLowerCase();
   const all=[...stops.values()].sort((a,b)=>a.ref-b.ref);
@@ -714,6 +723,7 @@ async function act(b,d){
   if("oaemailall" in d){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email); let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"outarea")) break; await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) } toast(`${n} email${n===1?"":"s"} sent`); render(); return }
   if(d.edit){ await editStop(stops.get(+d.edit)); return }
   if("addstop" in d){ await editStop(null); return }
+  if(d.oaauth){ const s=stops.get(+d.oaauth); if(await confirmBox("Authorise this collection?",`${s.name}, ${short(s.address)}, ${s.postcode} is ${Math.round(km(s,DEPOT))} km from the depot. It goes on the to-do list and is planned with stops on the way back.`,"Authorise")){ await patch("stops/"+sid(s.ref),{oaAuth:true,oaAuthAt:new Date().toISOString(),oaAuthBy:me||""}); toast(`${s.name} authorised`) } return }
   if(d.oaremove){ const s=stops.get(+d.oaremove); if(await confirmBox("Remove this address?",`${s.name}, ${short(s.address)}, ${s.postcode} will be taken off the collection. No email is sent.`,"Remove")){ await patch("stops/"+sid(s.ref),{status:"Closed",closedReason:"Out of area",closedAt:new Date().toISOString()}); toast(`${s.name} removed`) } return }
   if(d.rebook){ const s=stops.get(+d.rebook); await rebook(s); toast(`${s.name} rebooked`); return }
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
