@@ -80,8 +80,8 @@ function render(){
      <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
      ${s.status==="moved"?'<div class="info">Taken off your run by the office.</div>':
       `<div class="acts">${live&&s.status==="out"?`<a class="btn ghost nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
-       <button class="got ${s.status==="Collected"?"on":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>${s.status==="Collected"?"✓ Collected · undo":"Collected"}</button>
-       <button class="miss ${s.status==="Missed"?"on":""}" data-ref="${s.ref}" data-v="Missed" ${live?"":"disabled"}>${s.status==="Missed"?"✕ Missed · undo":"Missed"}</button></div>`}
+       <button class="got ${s.status==="Collected"?"on":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>${s.status==="Collected"?(live?"✓ Collected · undo":"✓ Collected"):"Collected"}</button>
+       <button class="miss ${s.status==="Missed"?"on":""}" data-ref="${s.ref}" data-v="Missed" ${live?"":"disabled"}>${s.status==="Missed"?(live?"✕ Missed · undo":"✕ Missed"):"Missed"}</button></div>`}
    </div>`).join("")}
    ${live?`<button class="done" data-complete ${left?"disabled":""}>${left?`Complete run · ${left} stop${left===1?"":"s"} still to mark`:"Complete run"}</button>`
      :`<div class="empty">Run complete: ${got} collected, ${missed} missed. Thanks for helping Primrose Hospice!</div>`}`;
