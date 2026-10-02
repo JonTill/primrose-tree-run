@@ -82,7 +82,7 @@ function render(){
    <div class="prog">${got} collected · ${missed} missed${skipped?` · ${skipped} skipped`:""} · ${left} to go</div>
    ${list.map((s,i)=>`<div class="stop ${s.status==="Missed"?"m":s.status==="Collected"?"c":s.status==="Skipped"?"s":""} ${s.status==="moved"?"d":""}">
      <div class="top"><div class="n">${i+1}</div><div class="body"><div class="name">${esc(s.name)} ${s.rebooked?'<span class="chip">2nd visit</span>':""}${s.large?' <span class="chip big">Large tree</span>':""}</div>
-     <div class="addr">${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="info">Tree: <b>${esc(s.where)}</b> · Tel ${esc(s.phone)}</div></div>
+     <div class="addr">${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="info">Tree: <b>${esc(s.where)}</b> ${s.phone?" · Tel "+esc(s.phone):""}</div></div>
      <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
      ${s.status==="moved"?'<div class="info">Taken off your run by the office.</div>':
       `<div class="acts">${live&&s.status==="out"?`<a class="btn ghost nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
