@@ -429,9 +429,15 @@ function renderDispatch(main){
   <h3>On the road (${out.length})</h3>
   ${out.length?`<div class="list">${out.map(runRow).join("")}</div>`:`<div class="empty">No runs out.</div>`}`;
 }
+function phaseChip(r){
+  const tags=(r.auto?' <span class="chip">Driver asked</span>':"")+((r.extras||[]).length?` <span class="chip">+${r.extras.reduce((a,x)=>a+(x.refs||[]).length,0)} extra</span>`:"");
+  if(r.state==="out") return tags;
+  const nx=r.nextRun&&runs.get(r.nextRun);
+  return (r.doneAt?'<span class="chip done">Done for the day</span>':nx?`<span class="chip done">Took run ${nx.n}</span>`:r.unloadedAt?'<span class="chip done">Unloaded</span>':r.returningAt?'<span class="chip out">Returning to unload</span>':"")+tags;
+}
 function runRow(r){
   const list=runStops(r), done=list.filter(s=>s.status==="Collected"||s.status==="Missed"||s.status==="Closed").length;
-  const st=r.state==="out"?`<span class="chip out">Out · ${done}/${list.length}</span>`:`<span class="chip done">Complete</span>`;
+  const st=`<span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${r.state==="out"?`<span class="chip out">Out · ${done}/${list.length}</span>`:`<span class="chip done">Complete</span>`}${phaseChip(r)}</span>`;
   return `<button class="runrow" data-run="${esc(r.id)}"><span class="no"><small>Run No</small>${r.n}</span><span class="meta"><b>${esc(r.team)}</b><br><span class="det">${esc(whoRun(r))}</span><br><span class="det">${esc(areaOf(list))} · ${list.length} stops · ${r.trees} trees · sent ${tm(r.sentAt)}</span></span>${st}</button>`;
 }
 function renderRuns(main){
@@ -445,7 +451,7 @@ function renderRuns(main){
 }
 function renderRun(main,r){
   const list=runStops(r), open=list.filter(s=>s.status==="out").length, dis=canWrite?"":"disabled";
-  main.innerHTML=`<div class="row" style="justify-content:space-between"><button class="btn ghost" data-backlist>‹ All runs</button>${r.state==="out"?'<span class="chip out">On the road</span>':`<span class="chip done">Complete ${tm(r.backAt)}</span>`}</div>
+  main.innerHTML=`<div class="row" style="justify-content:space-between"><button class="btn ghost" data-backlist>‹ All runs</button><span>${r.state==="out"?'<span class="chip out">On the road</span>':`<span class="chip done">Complete ${tm(r.backAt)}</span>`} ${phaseChip(r)}</span></div>
   <h2 style="margin-top:10px">Run ${r.n} · ${esc(r.team)}</h2>
   <div style="font-weight:700">${esc(whoRun(r))}</div>
   <div class="sub">${esc(areaOf(list))} · ${list.length} stops · ${r.trees} trees · sent ${tm(r.sentAt)}</div>
@@ -453,6 +459,9 @@ function renderRun(main,r){
    ${r.state==="out"?`<button class="btn blue" data-return="${esc(r.id)}" ${dis}>Complete run · ${open} collected, ${list.filter(s=>s.status==="Missed"&&s.run===r.id).length} missed</button>`:""}</div>
   ${driverLink(r)?`<div class="hint" style="margin-bottom:6px">Driver link: <a href="${esc(driverLink(r))}" target="_blank" rel="noopener">open the driver's view</a>. It's in the WhatsApp message and email.</div>`:""}
   <div class="hint" style="margin-bottom:8px">${r.emailedAt?`Emailed to ${esc(r.emailedTo)} ${tm(r.emailedAt)}.`:"Not emailed yet."} WhatsApp opens with the message ready: tap send.</div>
+  ${r.auto?`<div class="hint" style="margin-bottom:6px">The driver asked for this run from their phone after unloading${r.prevRun&&runs.get(r.prevRun)?` run ${runs.get(r.prevRun).n}`:""}. It's already on their screen.</div>`:""}
+  ${(r.extras||[]).map(x=>`<div class="hint" style="margin-bottom:6px">Driver added ${(x.refs||[]).length} extra stop${(x.refs||[]).length===1?"":"s"} (${x.trees} tree${x.trees===1?"":"s"}) ${tm(x.at)}.</div>`).join("")}
+  ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.returningAt&&`Returning to unload ${tm(r.returningAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
   <textarea class="msg" id="msg" readonly aria-label="Driver message" hidden>${esc(message(r,list))}</textarea>
   ${open&&r.state==="out"?`<div class="hint" style="margin-bottom:8px">Tap <b>Missed</b> on any stop the team couldn't collect. When they're back, tap <b>Complete run</b>: every stop not marked Missed is counted as collected.</div>`:""}
   <div class="list">${list.map((s,i)=>stopCard(s,i+1,r)).join("")}</div>`;
@@ -585,6 +594,8 @@ function renderTeams(main){
   const dis=canWrite?"":"disabled";
   main.innerHTML=`<div class="card"><h2>Office mobile</h2>
    <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on messages, emails and run sheets</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
+  <div class="card" style="margin-top:10px"><h2>Driver options</h2>
+   <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as Dispatch and show <b>Driver asked</b> on the Runs tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Trees per run</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
@@ -766,6 +777,7 @@ async function act(b,d){
   if(d.rebook){ const s=stops.get(+d.rebook); await rebook(s); toast(`${s.name} rebooked`); return }
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
   if(d.final){ const s=stops.get(+d.final); if(await sendEmail(s,"final")){ await patch("stops/"+sid(s.ref),{status:"Closed",finalEmailAt:new Date().toISOString()}); toast(`Final email sent to ${s.name}`) } return }
+  if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
   if("addteam" in d){
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
