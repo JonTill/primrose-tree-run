@@ -122,8 +122,10 @@ function endStage(r,got,missed,skipped,callBtn){
       ${p.allTrees>p.todayTrees?`<div class="sm">This weekend so far: <b>${p.allTrees} trees</b> on ${p.allRuns} runs</div>`:""}
       ${p.eventTrees?`<div class="sm">Everyone together: <b>${p.eventTrees} trees</b> collected so far</div>`:""}
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>`; }
-  if(!r.unloadedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}. Drive back to the depot at ${esc(DEPOT)}. Tap the button once the trees are off.</div>
-      <a class="btn ghost" href="${depot}" target="_blank" rel="noopener">Route to the depot</a><button class="btn blue" data-unloaded>Unloaded at the depot</button></div><div class="bar">${callBtn}</div>`;
+  if(!r.unloadedAt&&!r.arrivedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}. Drive back to the depot at ${esc(DEPOT)}. Tap the button when you get there.</div>
+      <a class="btn ghost" href="${depot}" target="_blank" rel="noopener">Route to the depot</a><button class="btn blue" data-arrived>Arrived at the depot</button></div><div class="bar">${callBtn}</div>`;
+  if(!r.unloadedAt) return `<div class="endp"><h2>Unloading</h2><div class="sub">Unload your ${got} tree${got===1?"":"s"} where the depot team shows you. Tap the button once the van is empty.</div>
+      <button class="btn blue" data-unloaded>Unloaded</button></div><div class="bar">${callBtn}</div>`;
   return `<div class="endp"><h2>Unloaded. Thank you!</h2><div class="sub">Run ${r.n} is done. Ready for more?</div>
       ${data.selfService?`<button class="btn" data-nextrun>Give me another run</button>`:`<div class="sub">Call the office if you'd like another run.</div>`}
       <button class="btn blue" data-done>I'm done for the day</button></div><div class="bar">${callBtn}</div>`;
@@ -163,7 +165,7 @@ function ask(title,text,ok){return new Promise(res=>{const m=document.createElem
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${esc(title)}</h2><div>${esc(text)}</div><div class="bar"><button class="btn ghost" data-x="0">Cancel</button><button class="btn" data-x="1" style="background:var(--blue);border-color:var(--blue)">${esc(ok)}</button></div></div>`;
   m.addEventListener("click",e=>{const x=e.target.closest("[data-x]"); if(!x&&e.target!==m) return; m.remove(); res(x?.dataset.x==="1")}); document.body.appendChild(m)})}
 document.addEventListener("click",async e=>{
-  const x=e.target.closest("button[data-extra],button[data-return],button[data-unloaded],button[data-nextrun],button[data-done]");
+  const x=e.target.closest("button[data-extra],button[data-return],button[data-arrived],button[data-unloaded],button[data-nextrun],button[data-done]");
   if(x){ const k=x.dataset;
     if("extra" in k){ if(!(data.extraLeft>0)){toast("You've had the most extra collections for this run. Head back to unload.");return} const n=await howMany(data.extraLeft); if(!n) return; const res=await step(x,"Finding collections…","driver_extra",{p_trees:n}); if(!res) return;
       if(res.ok){ toast(`Added ${res.stops} stop${res.stops===1?"":"s"} (${res.trees} tree${res.trees===1?"":"s"}). Route updated.`); await load(); return }
@@ -171,6 +173,7 @@ document.addEventListener("click",async e=>{
     if("return" in k){ if(!await ask("Heading back to unload?","Your run is finished and the office will see it straight away. You can't add more stops to this run afterwards.","Returning to unload")) return;
       const res=await step(x,"Saving…","driver_return"); if(!res) return;
       if(res.error==="not_finished"){toast(`${res.left} stop${res.left===1?"":"s"} still to mark`)} else toast("Drive safely back to the depot"); await load(); window.scrollTo(0,0); return }
+    if("arrived" in k){ const res=await step(x,"Saving…","driver_arrived"); if(!res) return; await load(); window.scrollTo(0,0); return }
     if("unloaded" in k){ const res=await step(x,"Saving…","driver_unloaded"); if(!res) return; await load(); window.scrollTo(0,0); return }
     if("nextrun" in k){ const res=await step(x,"Building your next run…","driver_next_run"); if(!res) return;
       if(res.ok&&res.token){ toast(res.n?`Run ${res.n}: ${res.stops} stops, ${res.trees} trees`:"Opening your run"); location.hash=res.token; return }
