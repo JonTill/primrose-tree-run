@@ -174,12 +174,12 @@ function render(){
   if(ph==="unloading"){ $("#sub").textContent=`Run ${r.n}`;
     m.innerHTML=`<div class="endp"><h2>Unloading</h2><div class="sub">Unload your ${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} where the depot team shows you. Tap the button once the van is empty.</div><button class="btn blue" data-st="driver_unloaded">Unloaded</button></div><div class="bar">${call}</div>`; return }
   if(ph==="choose"){ $("#sub").textContent=`Run ${r.n} done`;
-    m.innerHTML=`<div class="endp"><h2>Unloaded. Thank you!</h2><div class="sub">Run ${r.n}: ${r.collectedTrees||0} trees collected. Ready for more?</div>
+    m.innerHTML=`<div class="endp"><h2>Unloaded. Thank you!</h2><div class="sub">Run ${r.n}: ${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} collected. Ready for more?</div>
       ${data.selfService?`<button class="btn bigbtn" data-start>Start another run</button>`:`<div class="sub">Call the office if you'd like another run.</div>`}
       <button class="btn blue" data-st="driver_done">We're done for the day</button></div>${statBlock()}<div class="bar">${call}</div>`; return }
   if(ph==="done"){ const p=data.report||{}; $("#sub").textContent="";
     m.innerHTML=`<div class="thanks"><h2>Thank you, ${esc(t.name)}!</h2><div class="tl">Today your team collected</div><div class="bigno">${p.todayTrees||0}</div><div class="tl">Christmas trees for Primrose Hospice</div>
-      <div class="sm">${p.todayRuns||0} run${p.todayRuns===1?"":"s"} · ${p.todayStops||0} houses</div>
+      <div class="sm">${p.todayRuns||0} run${p.todayRuns===1?"":"s"} · ${p.todayStops||0} house${p.todayStops===1?"":"s"}</div>
       ${p.allTrees>p.todayTrees?`<div class="sm">This weekend so far: <b>${p.allTrees} trees</b> on ${p.allRuns} runs</div>`:""}
       ${p.eventTrees?`<div class="sm">Everyone together: <b>${p.eventTrees} trees</b> collected so far</div>`:""}
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>
