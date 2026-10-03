@@ -94,6 +94,8 @@ option{color:var(--fg)}
 .acts button:disabled{opacity:.5;cursor:default}
 .msg{width:100%;font:inherit;font-size:.82rem;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);min-height:110px;resize:vertical}
 .miss{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.ph{padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);cursor:pointer;width:96px;height:72px;flex:none}.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.phfull{max-width:min(92vw,900px)}.phfull img{width:100%;border-radius:10px;display:block}
 .miss .top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
 .steps{display:flex;flex-wrap:wrap;gap:6px}
 .banner{padding:10px 12px;border-radius:10px;background:var(--warn-soft);color:var(--fg);font-size:.9rem}
@@ -501,8 +503,9 @@ function missCard(s){
   else if(s.replyAt){ state=`<span class="chip done">Replied ${tm(s.replyAt)}</span>`; acts=`<button class="btn" data-rebook="${s.ref}" ${canWrite?"":"disabled"}>Rebook</button>`; }
   else if(s.missedEmailAt){ state=`<span class="chip warn">Emailed ${tm(s.missedEmailAt)} · waiting</span>`; acts=`${MAILTO?`<button class="btn" data-replied="${s.ref}" ${canWrite?"":"disabled"}>Customer replied</button><button class="btn ghost" data-email="${s.ref}" ${dis}>Open email again</button>`:""}<button class="btn ghost" data-rebook="${s.ref}" ${canWrite?"":"disabled"}>Rebook anyway</button>`; }
   else { state=`<span class="chip bad">Not emailed yet</span>`; acts=`<button class="btn bad" data-email="${s.ref}" ${dis}>Email customer</button>`; }
+  const ph=s.photoAt&&s.photoKind==="missed"?`<div class="row" style="align-items:center;gap:10px">${photoBtn(s,"missed")}<span class="hint">Driver's photo ${tm(s.photoAt)}. Tap to enlarge.</span></div>`:(s.noPhotoAt&&s.noPhotoKind==="missed"&&s.status!=="Closed"?`<div class="hint">Driver didn't take a photo.</div>`:"");
   return `<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${state}</div>
-   <div>${esc(short(s.address))}, ${esc(s.postcode)}</div>
+   <div>${esc(short(s.address))}, ${esc(s.postcode)}</div>${ph}
    <div class="hint">${esc(s.email||"No email address")} · missed ${tm(s.missedAt)}${s.missRun?` on run ${s.missRun}${runOf(s.missRun)?` (${esc(runOf(s.missRun).team)} · ${esc(whoRun(runOf(s.missRun)))})`:""}`:""}</div>
    ${acts?`<div class="steps">${acts}</div>`:""}</div>`;
 }
@@ -512,7 +515,24 @@ let PC=null, pcLoading=null;
 function loadPC(){ if(PC) return Promise.resolve(PC); if(!pcLoading) pcLoading=fetch("postcodes.json").then(r=>{if(!r.ok) throw new Error(r.status); return r.json()}).then(j=>PC=j).catch(e=>{pcLoading=null; throw e}); return pcLoading }
 function normPC(p){const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); return k.length>=5?k.slice(0,-3)+" "+k.slice(-3):k}
 function geocode(p){ const k=normPC(p).replace(" ",""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1],how:"postcode"}; const sec=k.slice(0,-2); if(PC.sector[sec]) return {lat:PC.sector[sec][0],lon:PC.sector[sec][1],how:"sector"}; return null }
-function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of area</span>'; if(s.status===""&&authFar(s)) return `<span class="chip warn">Waiting · authorised ${Math.round(km(s,DEPOT))} km</span>`; if(s.status===""&&s.skippedRun) return `<span class="chip grey">Waiting · skipped${s.skipReason?": "+esc(s.skipReason):""}</span>`; return {"":`<span class="chip grey">Waiting</span>`,out:'<span class="chip out">On the road</span>',Collected:'<span class="chip done">Collected</span>',Missed:'<span class="chip bad">Missed</span>',Closed:'<span class="chip grey">Closed</span>'}[s.status]||"" }
+/* ---------- driver photos (missed / tree too big) ---------- */
+const PH=new Map(); let phTimer=null;
+function photoBtn(s,kind){ const t=PH.get(s.ref+kind); if(t===undefined){ clearTimeout(phTimer); phTimer=setTimeout(fillPhotos,0) }
+  return `<button class="ph" data-photoview="${s.ref}" data-pk="${kind}" aria-label="View driver's photo">${t?`<img src="${t}" alt="">`:`<span class="hint">Photo</span>`}</button>` }
+async function fillPhotos(){ const sb=window.treerunSupabase; if(!sb) return;
+  const want=[...document.querySelectorAll("[data-photoview]")].filter(b=>!PH.has(b.dataset.photoview+b.dataset.pk)); if(!want.length) return;
+  const refs=[...new Set(want.map(b=>+b.dataset.photoview))]; refs.forEach(r=>{PH.set(r+"missed",PH.get(r+"missed")||null);PH.set(r+"toobig",PH.get(r+"toobig")||null)});
+  const {data,error}=await sb.from("photos").select("ref,kind,thumb,taken_at").in("ref",refs).order("taken_at",{ascending:true}); if(error) return;
+  (data||[]).forEach(p=>PH.set(p.ref+p.kind,p.thumb));
+  document.querySelectorAll("[data-photoview]").forEach(b=>{const t=PH.get(b.dataset.photoview+b.dataset.pk); if(t&&!b.querySelector("img")) b.innerHTML=`<img src="${t}" alt="">`}) }
+async function viewPhoto(ref,kind){ const s=stops.get(ref), sb=window.treerunSupabase;
+  const {data,error}=await sb.from("photos").select("img,taken_at").eq("ref",ref).eq("kind",kind).order("taken_at",{ascending:false}).limit(1);
+  if(error||!data||!data.length){ toast("Photo not found. Photos are deleted 30 days after they're taken."); return }
+  const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
+  d.innerHTML=`<div class="mbox phfull"><h2>${esc(s?s.name:"Stop "+ref)}</h2><div class="hint">${s?esc(short(s.address))+", "+esc(s.postcode)+" · ":""}${kind==="toobig"?"Skipped: tree too big":"Missed"} · photo taken ${new Date(data[0].taken_at).toLocaleString("en-GB",{weekday:"short",hour:"2-digit",minute:"2-digit"})}</div><img src="${data[0].img}" alt="Driver's photo"><div class="row" style="justify-content:flex-end"><button class="btn" data-m="0">Close</button></div></div>`;
+  const done=()=>{d.remove();document.removeEventListener("keydown",kd,true)}; const kd=e=>{if(e.key==="Escape"){e.stopPropagation();done()}};
+  d.addEventListener("click",e=>{e.stopPropagation(); if(e.target===d||e.target.closest("[data-m]")) done()}); document.addEventListener("keydown",kd,true); document.body.appendChild(d) }
+function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of area</span>'; if(s.status===""&&authFar(s)) return `<span class="chip warn">Waiting · authorised ${Math.round(km(s,DEPOT))} km</span>`; if(s.status===""&&s.skippedRun) return `<span class="chip grey">Waiting · skipped${s.skipReason?": "+esc(s.skipReason):""}</span>${s.skipReason==="Tree too big"&&s.photoAt&&s.photoKind==="toobig"?` <button class="chip" data-photoview="${s.ref}" data-pk="toobig" style="border:0;cursor:pointer">View photo</button>`:""}`; return {"":`<span class="chip grey">Waiting</span>`,out:'<span class="chip out">On the road</span>',Collected:'<span class="chip done">Collected</span>',Missed:'<span class="chip bad">Missed</span>',Closed:'<span class="chip grey">Closed</span>'}[s.status]||"" }
 function renderAddresses(main){
   const q=($("#addr-q")?.value??view.q??"").trim().toLowerCase();
   const all=[...stops.values()].sort((a,b)=>a.ref-b.ref);
@@ -674,6 +694,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button"); if(!b) return; const d=b.dataset;
+  if(d.photoview){ viewPhoto(+d.photoview,d.pk); return }
   if(d.sub){view.sub=d.sub;save();render();return}
   if(d.tab){view={tab:d.tab,run:null,sub:"live"};save();render();window.scrollTo(0,0);return}
   if(d.run){view={tab:"runs",run:d.run,sub:view.sub};save();render();window.scrollTo(0,0);return}
