@@ -134,7 +134,8 @@ async function rpc(fn,args){ const {data:d,error}=await sb.rpc(fn,args); if(erro
 async function load(withPos){
   if(!teamToken){ data={error:"not_found"}; return render() }
   let p=null; if(withPos&&geoOK) p=await getPos(8000);
-  const d=await rpc("team_get",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null,p_acc:p?.acc??null}); if(!d) return;
+  const d=await rpc("team_get",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null,p_acc:p?.acc??null});
+  if(!d){ if(!data){ $("#sub").textContent=""; $("#main").innerHTML=`<div class="empty">Couldn't load your team page. Check your signal and tap Try again. If it keeps happening, call the office.</div><button class="btn" onclick="load()">Try again</button>` } return }
   data=d; token=d.run?.token||""; render() }
 function phase(){ const r=data.run; if(!r) return "home";
   if(r.state==="out"&&r.mode==="live") return "live";
