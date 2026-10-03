@@ -112,8 +112,8 @@ footer img{height:26px;width:auto;background:var(--plate);border-radius:4px;padd
 .mbox{background:var(--surface);color:var(--fg);border-radius:14px;padding:18px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
 .mbox p{margin:0}
 .mbox > .field{flex:none}
-.subtabs{display:flex;gap:6px;margin-bottom:10px}
-.subtabs button{flex:1;font:700 .9rem var(--body);padding:9px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.subtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.subtabs button{flex:1 1 140px;font:700 .9rem var(--body);padding:9px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
 .subtabs button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:var(--blue-fg)}
 .toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;font-size:.9rem;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:no-preference){.pbar i{transition:width .3s}}
@@ -433,7 +433,14 @@ function phaseChip(r){
   const tags=(r.auto?' <span class="chip">Driver asked</span>':"")+((r.extras||[]).length?` <span class="chip">+${r.extras.reduce((a,x)=>a+(x.refs||[]).length,0)} extra</span>`:"");
   if(r.state==="out") return tags;
   const nx=r.nextRun&&runs.get(r.nextRun);
-  return (r.doneAt?'<span class="chip done">Done for the day</span>':nx?`<span class="chip done">Took run ${nx.n}</span>`:r.unloadedAt?'<span class="chip done">Unloaded</span>':r.returningAt?'<span class="chip out">Returning to unload</span>':"")+tags;
+  return (r.doneAt?'<span class="chip done">Done for the day</span>':nx?`<span class="chip done">Took run ${nx.n}</span>`:r.unloadedAt?'<span class="chip warn">Unloaded · driver choosing</span>':r.arrivedAt?'<span class="chip warn">Unloading</span>':r.returningAt?'<span class="chip out">Returning to unload</span>':"")+tags;
+}
+function runPhase(r){
+  if(r.state==="out") return "live";
+  if(r.officeClosedAt||r.doneAt||r.nextRun) return "done";
+  if(r.unloadedAt||r.arrivedAt) return "unl";
+  if(r.returningAt) return "ret";
+  return "done";
 }
 function runRow(r){
   const list=runStops(r), done=list.filter(s=>s.status==="Collected"||s.status==="Missed"||s.status==="Closed").length;
@@ -442,12 +449,12 @@ function runRow(r){
 }
 function renderRuns(main){
   if(view.run && runs.has(view.run)) return renderRun(main,runs.get(view.run));
-  const sub=view.sub==="done"?"done":"live";
-  const live=[...runs.values()].filter(r=>r.state==="out").sort((a,b)=>a.n-b.n);
-  const done=[...runs.values()].filter(r=>r.state!=="out").sort((a,b)=>b.n-a.n);
-  const list=sub==="live"?live:done;
-  main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${live.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${done.length})</button></div>
-  ${list.length?`<div class="list">${list.map(runRow).join("")}</div>`:`<div class="empty">${sub==="live"?"No runs on the road. Build one on the Dispatch tab.":"No completed runs yet."}</div>`}`;
+  const sub=["live","ret","unl","done"].includes(view.sub)?view.sub:"live";
+  const all=[...runs.values()], by=k=>all.filter(r=>runPhase(r)===k).sort((a,b)=>k==="done"?b.n-a.n:a.n-b.n);
+  const g={live:by("live"),ret:by("ret"),unl:by("unl"),done:by("done")}, list=g[sub];
+  const empty={live:"No runs on the road. Build one on the Dispatch tab.",ret:"No teams heading back to unload.",unl:"No teams unloading at the depot.",done:"No completed runs yet."};
+  main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${g.done.length})</button></div>
+  ${list.length?`<div class="list">${list.map(runRow).join("")}</div>`:`<div class="empty">${empty[sub]}</div>`}`;
 }
 function renderRun(main,r){
   const list=runStops(r), open=list.filter(s=>s.status==="out").length, dis=canWrite?"":"disabled";
@@ -461,7 +468,8 @@ function renderRun(main,r){
   <div class="hint" style="margin-bottom:8px">${r.emailedAt?`Emailed to ${esc(r.emailedTo)} ${tm(r.emailedAt)}.`:"Not emailed yet."} WhatsApp opens with the message ready: tap send.</div>
   ${r.auto?`<div class="hint" style="margin-bottom:6px">The driver asked for this run from their phone after unloading${r.prevRun&&runs.get(r.prevRun)?` run ${runs.get(r.prevRun).n}`:""}. It's already on their screen.</div>`:""}
   ${(r.extras||[]).map(x=>`<div class="hint" style="margin-bottom:6px">Driver added ${(x.refs||[]).length} extra stop${(x.refs||[]).length===1?"":"s"} (${x.trees} tree${x.trees===1?"":"s"}) ${tm(x.at)}.</div>`).join("")}
-  ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.returningAt&&`Returning to unload ${tm(r.returningAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
+  ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.returningAt&&`Returning to unload ${tm(r.returningAt)}`,r.arrivedAt&&`arrived at the depot ${tm(r.arrivedAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
+  ${runPhase(r)==="unl"||runPhase(r)==="ret"?`<div class="row" style="margin-bottom:8px;align-items:center"><span class="hint">${runPhase(r)==="ret"?"Still heading back.":r.unloadedAt?"Unloaded. Waiting for the driver to choose another run or done for the day.":"At the depot unloading."}</span><button class="btn ghost" data-closerun="${esc(r.id)}" ${canWrite?"":"disabled"}>Move to Completed</button></div>`:""}
   <textarea class="msg" id="msg" readonly aria-label="Driver message" hidden>${esc(message(r,list))}</textarea>
   ${open&&r.state==="out"?`<div class="hint" style="margin-bottom:8px">Tap <b>Missed</b> on any stop the team couldn't collect. When they're back, tap <b>Complete run</b>: every stop not marked Missed is counted as collected.</div>`:""}
   <div class="list">${list.map((s,i)=>stopCard(s,i+1,r)).join("")}</div>`;
@@ -777,6 +785,7 @@ async function act(b,d){
   if(d.rebook){ const s=stops.get(+d.rebook); await rebook(s); toast(`${s.name} rebooked`); return }
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
   if(d.final){ const s=stops.get(+d.final); if(await sendEmail(s,"final")){ await patch("stops/"+sid(s.ref),{status:"Closed",finalEmailAt:new Date().toISOString()}); toast(`Final email sent to ${s.name}`) } return }
+  if(d.closerun){ const r=runs.get(d.closerun); if(r&&await patch("runs/"+r.id,{officeClosedAt:new Date().toISOString(),officeClosedBy:me||""})) toast(`Run ${r.n} moved to Completed`); return }
   if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
   if("addteam" in d){
