@@ -171,7 +171,7 @@ const MAX_STOPS=30; // sanity cap per run
 const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
-const TABS=[["dispatch","Dispatch"],["runs","Runs"],["misses","Need attention"],["addresses","Addresses"],["teams","Teams"]];
+const TABS=[["dispatch","Dispatch"],["runs","Runs"],["map","Map"],["misses","Need attention"],["addresses","Addresses"],["teams","Teams"]];
 
 let stops=new Map(), runs=new Map(), teams=new Map(), settings={};
 let db=null, mcp=null, dl=null, tried=false, canWrite=true, me=null, got={stops:false,runs:false,teams:false};
@@ -418,7 +418,7 @@ function render(){
   const main=$("#main");
   if(!got.stops){ main.innerHTML=`<div class="empty">${tried&&!db?"Collections appear here once the page connects. If this message stays, reopen the link while signed in to Claude.":"Loading collections…"}</div>`; return; }
   if(!stops.size){ main.innerHTML=`<div class="empty">No addresses loaded yet. Jon's collection list will appear here once it's loaded.</div>`; return; }
-  ({dispatch:renderDispatch,runs:renderRuns,misses:renderMisses,addresses:renderAddresses,teams:renderTeams}[view.tab]||renderDispatch)(main);
+  ({dispatch:renderDispatch,runs:renderRuns,map:renderMap,misses:renderMisses,addresses:renderAddresses,teams:renderTeams}[view.tab]||renderDispatch)(main);
 }
 
 function renderDispatch(main){
@@ -453,7 +453,7 @@ function renderDispatch(main){
   ${out.length?`<div class="list">${out.map(runRow).join("")}</div>`:`<div class="empty">No runs out.</div>`}`;
 }
 function phaseChip(r){
-  const tags=(r.auto?' <span class="chip">Driver asked</span>':"")+((r.extras||[]).length?` <span class="chip">+${r.extras.reduce((a,x)=>a+(x.refs||[]).length,0)} extra</span>`:"");
+  const tags=(r.mode==="live"?' <span class="chip">Team link</span>':"")+(r.vanFull?' <span class="chip">Van full</span>':"")+(r.auto?' <span class="chip">Driver asked</span>':"")+((r.extras||[]).length?` <span class="chip">+${r.extras.reduce((a,x)=>a+(x.refs||[]).length,0)} extra</span>`:"");
   if(r.state==="out") return tags;
   const nx=r.nextRun&&runs.get(r.nextRun);
   return (r.doneAt?'<span class="chip done">Done for the day</span>':nx?`<span class="chip done">Took run ${nx.n}</span>`:r.unloadedAt?'<span class="chip warn">Unloaded · driver choosing</span>':r.arrivedAt?'<span class="chip warn">Unloading</span>':r.returningAt?'<span class="chip out">Returning to unload</span>':"")+tags;
@@ -620,6 +620,50 @@ function editStop(s){
   });
 }
 
+/* ---------- team self-serve links ---------- */
+const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"driver.html").replace(/driver\.html$/,"team.html");
+const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
+const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,"");
+function teamWa(t){ const txt=`Hi ${t.contact||""}, here's the ${t.name} link for the Primrose Hospice Christmas tree collection. Keep it handy all weekend.\n\nWhen you're ready, tap Start a run. It gives you one collection at a time and the next one appears when you mark it. When the van's full, tap Van full and head back to the depot.\n\n${teamLink(t)}`; const n=intlPhone(t.phone); return (n?`https://wa.me/${n}`:`https://wa.me/`)+`?text=${encodeURIComponent(txt)}` }
+function teamLinkCell(t,dis){ if(!t.teamToken) return `<button class="btn ghost" data-mklink="${esc(t.id)}" ${dis}>Create link</button>`;
+  return `${t.paused?'<span class="chip bad">Paused</span> ':""}<a class="btn" style="background:#25D366;border-color:#25D366;color:#0b1512" href="${teamWa(t)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" data-cplink="${esc(t.id)}">Copy</button><button class="btn ghost" data-pause="${esc(t.id)}" ${dis}>${t.paused?"Resume":"Pause"}</button><button class="btn ghost" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>New link</button>` }
+
+/* ---------- map of teams ---------- */
+let MAP=null, mapEl=null, mapLayers=null, mapPos=[], mapPosAt=0, leafletLoading=null;
+function loadLeaflet(){ if(window.L) return Promise.resolve(); if(leafletLoading) return leafletLoading;
+  leafletLoading=new Promise((res,rej)=>{ const l=document.createElement("link"); l.rel="stylesheet"; l.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"; document.head.appendChild(l);
+    const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"; s.onload=()=>res(); s.onerror=()=>{leafletLoading=null;rej(new Error("map"))}; document.head.appendChild(s) }); return leafletLoading }
+async function fetchPositions(force){ if(!force&&Date.now()-mapPosAt<25000) return; mapPosAt=Date.now(); const sb=window.treerunSupabase; if(!sb) return;
+  const {data,error}=await sb.from("team_pos").select("team_id,lat,lon,acc,at,run_id"); if(!error){ mapPos=data||[]; if(view.tab==="map") drawMap() } }
+setInterval(()=>{ if(view.tab==="map") fetchPositions(true) },30000);
+const ago=iso=>{ const m=Math.round((Date.now()-new Date(iso))/60000); return m<1?"just now":m<60?`${m} min ago`:`${Math.floor(m/60)} h ${m%60} min ago` };
+function teamWhere(t,r){ const p=mapPos.find(x=>x.team_id===t.id); if(p&&Date.now()-new Date(p.at)<6*3600e3) return {lat:p.lat,lon:p.lon,at:p.at,how:"phone"};
+  if(!r) return null; const done=(r.refs||[]).map(x=>stops.get(x)).filter(s=>s&&s.run===r.id&&(s.status==="Collected"||s.status==="Missed")&&s.lat!=null);
+  const last=done.sort((a,b)=>new Date(b.collectedAt||b.missedAt||0)-new Date(a.collectedAt||a.missedAt||0))[0]; if(last) return {lat:last.lat,lon:last.lon,at:last.collectedAt||last.missedAt,how:"last job"};
+  return null }
+function drawMap(){ if(!MAP||!window.L) return; mapLayers.clearLayers();
+  L.circleMarker([DEPOT.lat,DEPOT.lon],{radius:9,color:"#00587B",fillColor:"#ffde0e",fillOpacity:1,weight:3}).bindTooltip("Depot").addTo(mapLayers);
+  for(let k=0;k<8;k++){ const a=k*Math.PI/4; L.polyline([[DEPOT.lat,DEPOT.lon],[DEPOT.lat+Math.cos(a)*16/111,DEPOT.lon+Math.sin(a)*16/(111.32*Math.cos(52.35*Math.PI/180))]],{color:"#888",weight:1,opacity:.35,dashArray:"4 6",interactive:false}).addTo(mapLayers) }
+  for(const s of stops.values()){ if(s.lat==null) continue;
+    if(s.status===""&&!outArea(s)) L.circleMarker([s.lat,s.lon],{radius:s.large?4:3,color:s.large?"#00587B":"#8a8f94",weight:1,fillOpacity:.6}).bindTooltip(`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large?" · large":""}`).addTo(mapLayers);
+    else if(s.status==="out"){ const r=runs.get(s.run); L.circleMarker([s.lat,s.lon],{radius:6,color:"#00905e",weight:2,fillColor:"#00905e",fillOpacity:.9}).bindTooltip(`${esc(r?r.team:"")}: ${esc(s.name)}`).addTo(mapLayers) } }
+  for(const t of teams.values()){ const r=[...runs.values()].find(x=>x.teamId===t.id&&x.state==="out"); const lastRun=r||[...runs.values()].filter(x=>x.teamId===t.id).sort((a,b)=>new Date(b.sentAt)-new Date(a.sentAt))[0];
+    const w=teamWhere(t,lastRun); if(!w) continue; if(!r&&Date.now()-new Date(w.at||0)>3*3600e3) continue;
+    const fresh=w.at&&Date.now()-new Date(w.at)<15*60e3;
+    const icon=L.divIcon({className:"",html:`<div style="background:${r?"#00905e":"#00587B"};color:#fff;font:700 12px/1.2 system-ui,sans-serif;padding:3px 7px;border-radius:999px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);opacity:${fresh?1:.6};transform:translate(-50%,-50%);display:inline-block">${esc(t.name)}</div>`});
+    L.marker([w.lat,w.lon],{icon}).bindTooltip(`${esc(t.name)} · ${r?`run ${r.n}`:"not on a run"} · ${w.how==="phone"?"phone":"last job"} ${w.at?ago(w.at):""}`).addTo(mapLayers) }
+}
+async function renderMap(main){
+  const live=[...runs.values()].filter(r=>r.state==="out").sort((a,b)=>a.n-b.n);
+  main.innerHTML=`<div id="mapwrap" style="height:min(70vh,620px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--surface)"><div class="empty" id="mapload">Loading map…</div></div>
+   <div class="hint" style="margin:6px 0 10px">Green labels: teams on a run. Blue: teams back or between runs. Faded: not seen for 15 minutes. Green dots: jobs teams have now. Grey dots: waiting collections (blue = large tree). Positions come from team phones when they allow it, otherwise their last job, and refresh every 30 seconds.</div>
+   <h3>On the road (${live.length})</h3>${live.length?`<div class="list">${live.map(r=>{const t=teams.get(r.teamId)||{}; const w=teamWhere(t,r); const cur=(r.refs||[]).map(x=>stops.get(x)).find(s=>s&&s.run===r.id&&s.status==="out"); return `<div class="miss"><div class="top"><b>${esc(r.team)} · run ${r.n}</b>${phaseChip(r)}</div><div class="hint">${cur?`Now: ${esc(short(cur.address))}, ${esc(cur.postcode)}`:"No job right now"}${w?` · seen ${w.how==="phone"?"by phone":"at last job"} ${w.at?ago(w.at):""}`:""}</div></div>`}).join("")}</div>`:`<div class="empty">No teams on the road.</div>`}`;
+  try{ await loadLeaflet() }catch(e){ const ml=document.getElementById("mapload"); if(ml) ml.textContent="Couldn't load the map. Check the internet connection."; return }
+  if(!mapEl){ mapEl=document.createElement("div"); mapEl.style.cssText="width:100%;height:100%"; }
+  const wrap=document.getElementById("mapwrap"); if(!wrap) return; wrap.innerHTML=""; wrap.appendChild(mapEl);
+  if(!MAP){ MAP=L.map(mapEl,{zoomControl:true}).setView([DEPOT.lat,DEPOT.lon],11); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(MAP); mapLayers=L.layerGroup().addTo(MAP) }
+  setTimeout(()=>MAP.invalidateSize(),50); drawMap(); fetchPositions();
+}
 function renderTeams(main){
   const all=[...teams.values()].sort((a,b)=>(a.extra-b.extra)||a.name.localeCompare(b.name));
   const dis=canWrite?"":"disabled";
@@ -637,9 +681,11 @@ function renderTeams(main){
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
+  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Start a run</b> and get one collection at a time until the van is full. Send it once by WhatsApp. <b>Pause</b> stops a team getting new jobs; <b>New link</b> stops the old link working.</div>
+   ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
-  ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees/run</th><th>Agreed times</th><th>Runs</th><th>Trees collected</th><th></th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
+  ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees/run</th><th>Agreed times</th><th>Runs</th><th>Trees collected</th><th>Team link</th><th></th></tr></thead><tbody>
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td>${teamLinkCell(t,dis)}</td><td><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -808,6 +854,11 @@ async function act(b,d){
   if(d.rebook){ const s=stops.get(+d.rebook); await rebook(s); toast(`${s.name} rebooked`); return }
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
   if(d.final){ const s=stops.get(+d.final); if(await sendEmail(s,"final")){ await patch("stops/"+sid(s.ref),{status:"Closed",finalEmailAt:new Date().toISOString()}); toast(`Final email sent to ${s.name}`) } return }
+  if(d.mklink){ const t=teams.get(d.mklink); if(!t) return; if(d.renew&&!await confirmBox("Make a new link?",`${t.name}'s old link will stop working. Send them the new one.`,"New link")) return;
+    if(await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Send it by WhatsApp.`); return }
+  if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
+  if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); toast(ok?`${t.name} link copied`:"Couldn't copy"); return }
+  if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name} resumed`:`${t.name} paused: no new jobs`); return }
   if(d.closerun){ const r=runs.get(d.closerun); if(r&&await patch("runs/"+r.id,{officeClosedAt:new Date().toISOString(),officeClosedBy:me||""})) toast(`Run ${r.n} moved to Completed`); return }
   if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
