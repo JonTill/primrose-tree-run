@@ -149,7 +149,7 @@ function statBlock(){ const p=data.report||{}; return `<div class="stat"><div><b
 function render(){
   const m=$("#main"); if(!data){m.innerHTML="";return}
   if(data.error){ $("#sub").textContent=""; m.innerHTML=`<div class="empty">This link isn't valid. Ask the office for your team's link.</div>`; return }
-  const t=data.team, r=data.run, ph=phase(), call=data.office?`<a class="btn ghost" href="tel:${esc(data.office.replace(/\s/g,""))}">Call office ${esc(data.office)}</a>`:"";
+  const t=data.team, r=data.run, ph=(view==="gohome"&&phase()==="done")?"home":phase(), call=data.office?`<a class="btn ghost" href="tel:${esc(data.office.replace(/\s/g,""))}">Call office ${esc(data.office)}</a>`:"";
   $("#title").textContent=t.name; document.title=t.name+" · Primrose Tree Run";
   if(t.paused&&ph!=="live"){ $("#sub").textContent=""; m.innerHTML=`<div class="empty">The office has paused your link. Please call them.</div><div class="bar">${call}</div>`; return }
   if(view==="summary"&&ph!=="live"){ const p=data.report||{};
@@ -184,7 +184,7 @@ function render(){
       ${p.allTrees>p.todayTrees?`<div class="sm">This weekend so far: <b>${p.allTrees} trees</b> on ${p.allRuns} runs</div>`:""}
       ${p.eventTrees?`<div class="sm">Everyone together: <b>${p.eventTrees} trees</b> collected so far</div>`:""}
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>
-      ${data.selfService?`<button class="btn ghost" data-start>Start another run anyway</button>`:""}`; return }
+      <button class="btn ghost" data-v="gohome">Home page</button>`; return }
   // home
   $("#sub").textContent=t.large?"Your team can take large trees":"Primrose Hospice Christmas Tree Collection";
   m.innerHTML=`<div class="home">${data.selfService?`<button class="btn bigbtn" data-start>Start a run</button>`:`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
