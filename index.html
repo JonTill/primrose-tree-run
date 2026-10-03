@@ -307,8 +307,31 @@ function message(r,list){
 const DRIVER_URL=(window.TREERUN_CONFIG||{}).driverUrl||"";
 const MAILTO=(window.TREERUN_CONFIG||{}).emailMode==="mailto";   // emails open in the user's own email program instead of being sent by the page
 function htmlText(h){return String(h).replace(/<a [^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g,"$2: $1").replace(/<li>/g,"- ").replace(/<\/(p|h3|ul|ol)>/g,"\n\n").replace(/<\/(li|tr)>/g,"\n").replace(/<br\s*\/?>/g,"\n").replace(/<\/td>/g,"  ").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\n{3,}/g,"\n\n").trim()}
-function openMail({to=[],bcc=[],subject="",body="",text=""}){const q=[`subject=${encodeURIComponent(subject)}`,`body=${encodeURIComponent(text||htmlText(body))}`]; if(bcc.length) q.unshift(`bcc=${[...new Set(bcc)].map(encodeURIComponent).join(",")}`); const a=document.createElement("a"); a.href=`mailto:${to.map(encodeURIComponent).join(",")}?${q.join("&")}`; document.body.appendChild(a); a.click(); a.remove(); return true}
-const MAIL_TOAST="Email opened in your email program. Check it and press Send.";
+function openMail({to=[],bcc=[],subject="",body="",text=""}){
+  // Shows the email with ways to send it. Resolves true only when the user confirms they sent it.
+  const txt=text||htmlText(body), bc=[...new Set(bcc)];
+  const mailto=`mailto:${to.map(encodeURIComponent).join(",")}?${[bc.length?`bcc=${bc.map(encodeURIComponent).join(",")}`:"",`subject=${encodeURIComponent(subject)}`,`body=${encodeURIComponent(txt)}`].filter(Boolean).join("&")}`;
+  const owa=`https://outlook.office.com/mail/deeplink/compose?${[to.length?`to=${encodeURIComponent(to.join(";"))}`:"",bc.length?`bcc=${encodeURIComponent(bc.join(";"))}`:"",`subject=${encodeURIComponent(subject)}`,`body=${encodeURIComponent(txt)}`].filter(Boolean).join("&")}`;
+  const copy=async t=>{ try{ await navigator.clipboard.writeText(t); return true }catch(e){ const ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand("copy") }catch(_){ } ta.remove(); return ok } };
+  return new Promise(res=>{
+    const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
+    d.innerHTML=`<div class="mbox" style="max-width:560px"><h2>Send this email</h2>
+      <div class="hint"><b>${bc.length?`Bcc (${bc.length}):`:"To:"}</b> ${esc((bc.length?bc:to).join(", "))}</div>
+      <div class="hint"><b>Subject:</b> ${esc(subject)}</div>
+      <textarea class="msg" readonly style="min-height:160px" aria-label="Email text">${esc(txt)}</textarea>
+      <div class="row" style="flex-wrap:wrap;gap:6px"><a class="btn" data-mo="owa" href="${esc(owa)}" target="_blank" rel="noopener">Open in Outlook (web)</a><a class="btn ghost" data-mo="app" href="${esc(mailto)}">Open in email app</a></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px"><button class="btn ghost" data-mo="ca">Copy ${bc.length?"addresses":"address"}</button><button class="btn ghost" data-mo="cs">Copy subject</button><button class="btn ghost" data-mo="ct">Copy email text</button></div>
+      <div class="hint">Open it in Outlook or your email app, check it and press Send there. Nothing opening? Use the Copy buttons and paste into a new email. Then tap <b>I've sent it</b>.</div>
+      <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-mo="x">Cancel</button><button class="btn blue" data-mo="ok">I've sent it</button></div></div>`;
+    const done=v=>{d.remove();document.removeEventListener("keydown",kd,true);res(v)}; const kd=e=>{if(e.key==="Escape"){e.stopPropagation();done(false)}};
+    d.addEventListener("click",async e=>{ e.stopPropagation(); const b=e.target.closest("[data-mo]"); if(!b){ if(e.target===d) done(false); return }
+      const k=b.dataset.mo; if(k==="owa"||k==="app") return;   // links open normally
+      if(k==="x") return done(false); if(k==="ok") return done(true);
+      const ok=await copy(k==="ca"?(bc.length?bc:to).join("; "):k==="cs"?subject:txt); toast(ok?"Copied":"Couldn't copy. Select the text and copy it yourself."); });
+    document.addEventListener("keydown",kd,true); document.body.appendChild(d);
+  });
+}
+const MAIL_TOAST="Email marked as sent";
 const driverLink=r=>DRIVER_URL&&r.token?`${DRIVER_URL}#${r.token}`:"";
 function nextRunNo(){let m=0;for(const r of runs.values()) m=Math.max(m,r.n||0);return m+1}
 
@@ -382,7 +405,7 @@ function runEmail(r,list){
 async function emailRun(r){
   const t=teams.get(r.teamId)||{};
   if(!t.email){toast(`No email address for ${r.team}`);return false}
-  if(MAILTO){ openMail({to:[t.email],subject:runEmail(r,runStops(r)).subject,text:message(r,runStops(r))}); await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); toast(MAIL_TOAST); return true }
+  if(MAILTO){ if(!await openMail({to:[t.email],subject:runEmail(r,runStops(r)).subject,text:message(r,runStops(r))})) return false; await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); toast(MAIL_TOAST); return true }
   if(!mcp){toast("Emails need the Microsoft 365 connector. Open the page in Claude with it connected.");return false}
   const {subject,body}=runEmail(r,runStops(r));
   try{ await mcp.callTool(M365,"outlook_send_mail",{to:[t.email],subject,body,bodyType:"html"}); await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); return true }
@@ -664,7 +687,7 @@ function mcpMsg(e){
 async function sendEmail(s,kind){
   if(!s.email){toast(`No email address for ${s.name}`);return false}
   const {subject,body}=emailBodies(s,kind);
-  if(MAILTO){ openMail({to:[s.email],subject,body}); toast(MAIL_TOAST); return true }
+  if(MAILTO){ return await openMail({to:[s.email],subject,body}) }
   try{ await mcp.callTool(M365,"outlook_send_mail",{to:[s.email],subject,body,bodyType:"html"}); return true }
   catch(e){ toast(mcpMsg(e)); return false }
 }
@@ -768,7 +791,7 @@ async function act(b,d){
   if(d.email){ const s=stops.get(+d.email); if(await sendEmail(s,"missed")){ await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
   if("emailall" in d){
     if(MAILTO){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt&&s.email).slice(0,40); if(!list.length){toast("No one to email");return}
-      openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: we couldn't find your tree",text:"Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers called at your address but couldn't find your tree.\n\nIf your tree is now out and ready, please reply to this email with your name and address and we'll arrange one more visit before the end of Sunday 10 January. Please leave it somewhere our volunteers can see it from the road, for example at the front of the house or by the drive.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272"});
+      if(!await openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: we couldn't find your tree",text:"Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers called at your address but couldn't find your tree.\n\nIf your tree is now out and ready, please reply to this email with your name and address and we'll arrange one more visit before the end of Sunday 10 January. Please leave it somewhere our volunteers can see it from the road, for example at the front of the house or by the drive.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272"})) return;
       const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{missedEmailAt:now,emailBulk:true}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
     const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt);
     let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"missed")) break; await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) }
@@ -776,7 +799,7 @@ async function act(b,d){
   }
   if("checkreplies" in d){ b.textContent="Checking…"; await checkReplies(); return }
   if(d.oaemail){ const s=stops.get(+d.oaemail); if(await sendEmail(s,"outarea")){ await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
-  if("oaemailall" in d&&MAILTO){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email).slice(0,40); if(!list.length) return; openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: outside our collection area",text:`Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. We only collect within 16 km (10 miles) of Bromsgrove, and the address you gave us is outside that area, so we can't collect your tree.\n\nPlease contact the office${officeNo()?" on "+officeNo():""} to arrange a refund.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272`}); const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{oaEmailAt:now}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
+  if("oaemailall" in d&&MAILTO){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email).slice(0,40); if(!list.length) return; if(!await openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: outside our collection area",text:`Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. We only collect within 16 km (10 miles) of Bromsgrove, and the address you gave us is outside that area, so we can't collect your tree.\n\nPlease contact the office${officeNo()?" on "+officeNo():""} to arrange a refund.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272`})) return; const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{oaEmailAt:now}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
   if("oaemailall" in d){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email); let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"outarea")) break; await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) } toast(`${n} email${n===1?"":"s"} sent`); render(); return }
   if(d.edit){ await editStop(stops.get(+d.edit)); return }
   if("addstop" in d){ await editStop(null); return }
