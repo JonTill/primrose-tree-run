@@ -693,7 +693,13 @@ function renderTeams(main){
 async function put(path,data){ try{ await db.doc(path).set(data); return true }catch(e){ return fail(e) } }
 async function patch(path,data){ try{ await db.doc(path).update(data); return true }catch(e){ return fail(e) } }
 function fail(e){ if(e&&e.code==="invalid_argument"){canWrite=false;$("#ro").hidden=false;render()} else toast("Couldn't save. Check the connection and tap again."); return false }
-async function copyText(t){ try{ await navigator.clipboard.writeText(t); return true }catch(e){ const ta=$("#msg"); if(ta){ta.hidden=false;ta.focus();ta.select()} return false } }
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true }catch(e){}
+  try{ const ta=document.createElement("textarea"); ta.value=t; ta.setAttribute("readonly",""); ta.style.cssText="position:fixed;top:0;left:0;width:2px;height:2px;opacity:0"; document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0,t.length); const ok=document.execCommand("copy"); ta.remove(); if(ok) return true }catch(e){}
+  copyBox(t); return null }
+function copyBox(t){ const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
+  d.innerHTML=`<div class="mbox"><h2>Copy this</h2><p class="hint">Your browser blocked automatic copying. The text is selected: press Ctrl+C (Cmd+C on a Mac), or long-press and choose Copy on a phone.</p><textarea class="msg" readonly style="min-height:90px">${esc(t)}</textarea><div class="row" style="justify-content:flex-end"><button class="btn" data-m="0">Done</button></div></div>`;
+  d.addEventListener("click",e=>{e.stopPropagation(); if(e.target===d||e.target.closest("[data-m]")) d.remove()}); document.body.appendChild(d); const ta=d.querySelector("textarea"); ta.focus(); ta.select() }
 
 let lastCheck=null;
 function confirmBox(title,text,okLabel){
@@ -857,7 +863,7 @@ async function act(b,d){
   if(d.mklink){ const t=teams.get(d.mklink); if(!t) return; if(d.renew&&!await confirmBox("Make a new link?",`${t.name}'s old link will stop working. Send them the new one.`,"New link")) return;
     if(await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Send it by WhatsApp.`); return }
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
-  if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); toast(ok?`${t.name} link copied`:"Couldn't copy"); return }
+  if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); if(ok) toast(`${t.name} link copied`); else if(ok===false) toast("Couldn't copy"); return }
   if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name} resumed`:`${t.name} paused: no new jobs`); return }
   if(d.closerun){ const r=runs.get(d.closerun); if(r&&await patch("runs/"+r.id,{officeClosedAt:new Date().toISOString(),officeClosedBy:me||""})) toast(`Run ${r.n} moved to Completed`); return }
   if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
