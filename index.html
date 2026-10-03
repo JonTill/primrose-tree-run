@@ -584,6 +584,38 @@ function renderAddresses(main){
   <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${s.large?' <span class="chip out">Large tree</span>':""}${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · ${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
+const VEHICLES=["Estate car","Estate car & trailer","Pickup truck","Small van","Transit van","Large van / Luton","Other"];
+function editTeam(t){
+  return new Promise(res=>{
+    const s0=(t.slots||[])[0]||{}, days=new Set((t.slots||[]).map(x=>x.day)), veh=VEHICLES.includes(t.vehicle)||!t.vehicle?VEHICLES:[...VEHICLES,t.vehicle];
+    const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
+    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:520px"><h2>Edit ${esc(t.name)}</h2>
+     <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-name">Team name</label><input id="et-name" type="text" value="${esc(t.name)}"></div><div class="field" style="flex:0 1 110px"><label for="et-cap">Trees per run</label><input id="et-cap" type="number" min="1" max="60" value="${esc(t.capacity)}"></div></div>
+     <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-contact">Contact name</label><input id="et-contact" type="text" value="${esc(t.contact||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-phone">Phone</label><input id="et-phone" type="tel" inputmode="tel" value="${esc(t.phone||"")}"></div></div>
+     <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-email">Email</label><input id="et-email" type="email" value="${esc(t.email||"")}"></div><div class="field" style="flex:1 1 170px"><label for="et-vehicle">Vehicle</label><select id="et-vehicle"><option value="">Choose…</option>${veh.map(v=>`<option ${v===t.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div></div>
+     <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(k=>`<label><input type="checkbox" id="et-d-${k}" ${days.has(k)?"checked":""}> ${DAY_LABEL[k]}</label>`).join("")}</div>
+      <div class="row"><div class="field" style="flex:0 1 130px"><label for="et-from">From</label><input id="et-from" type="time" value="${esc(s0.from||"09:00")}"></div><div class="field" style="flex:0 1 130px"><label for="et-to">To</label><input id="et-to" type="time" value="${esc(s0.to||"15:30")}"></div></div></div>
+     <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" value="${esc(t.notes||"")}"></div>
+     <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-large" ${t.large?"checked":""}> Can take large trees</label>
+     <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-extra" ${t.extra?"checked":""}> Extra team (not on the original rota)</label>
+     <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Save</button></div></div>`;
+    const close=v=>{d.remove();document.removeEventListener("keydown",kd,true);res(v)}; const kd=e=>{if(e.key==="Escape"){e.stopPropagation();close(false)}};
+    d.querySelector("#et-vehicle").addEventListener("change",e=>{ if(/Transit|trailer|Luton/i.test(e.target.value)) d.querySelector("#et-large").checked=true });
+    d.addEventListener("click",async e=>{ e.stopPropagation(); const b=e.target.closest("[data-m]"); if(!b){ if(e.target===d) close(false); return } if(b.dataset.m==="0") return close(false);
+      const q=id=>d.querySelector(id), name=q("#et-name").value.trim(), cap=parseInt(q("#et-cap").value,10), contact=q("#et-contact").value.trim(), email=q("#et-email").value.trim(), vehicle=q("#et-vehicle").value;
+      const phone=(p=>{const x=p.replace(/[^\d+]/g,""); return /^0\d{10}$/.test(x)?x.slice(0,5)+" "+x.slice(5):p})(q("#et-phone").value.trim());
+      if(!name||!(cap>0)){toast("Enter a team name and trees per run");return}
+      if(!contact||!phone||!vehicle){toast("Enter the contact name, phone and vehicle");return}
+      if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("That email address doesn't look right");return}
+      const from=q("#et-from").value||"09:00", to=q("#et-to").value||"15:30";
+      const slots=Object.keys(EVENT_DAYS).filter(k=>q("#et-d-"+k).checked).map(day=>({day,from,to}));
+      b.disabled=true;
+      const ok=await patch("teams/"+t.id,{name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,200),large:q("#et-large").checked,extra:q("#et-extra").checked});
+      if(ok&&name!==t.name){ for(const r of runs.values()) if(r.teamId===t.id&&r.state==="out") await patch("runs/"+r.id,{team:name.slice(0,60)}) }
+      b.disabled=false; if(ok) close(true) });
+    document.addEventListener("keydown",kd,true); document.body.appendChild(d); d.querySelector("#et-name").focus();
+  });
+}
 function editStop(s){
   return new Promise(async res=>{
     try{ await loadPC() }catch(e){ toast("Couldn't load the postcode list. Reload the page and try again."); return res(false) }
@@ -685,7 +717,7 @@ function renderTeams(main){
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees/run</th><th>Agreed times</th><th>Runs</th><th>Trees collected</th><th>Team link</th><th></th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td>${teamLinkCell(t,dis)}</td><td><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td>${teamLinkCell(t,dis)}</td><td><button class="btn ghost" data-editteam="${esc(t.id)}" ${dis}>Edit</button><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -880,6 +912,7 @@ async function act(b,d){
     if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,extra:$("#t-extra").checked,large:$("#t-large").checked})) toast(`${name} added`);
     return;
   }
+  if(d.editteam){ const t=teams.get(d.editteam); if(t&&await editTeam(t)) toast(`${t.name} updated`); return }
   if(d.tlarge){ const t=teams.get(d.tlarge); if(t&&await patch("teams/"+t.id,{large:!t.large})) toast(`${t.name}: ${t.large?"no longer takes":"now takes"} large trees`); return }
   if(d.delteam){ try{ await db.doc("teams/"+d.delteam).delete(); toast("Team removed") }catch(e){ fail(e) } return }
 }
