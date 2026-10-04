@@ -137,7 +137,7 @@ async function load(withPos){
   const d=await rpc("team_get",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null,p_acc:p?.acc??null});
   if(!d){ if(!data){ $("#sub").textContent=""; $("#main").innerHTML=`<div class="empty">Couldn't load your team page. Check your signal and tap Try again. If it keeps happening, call the office.</div><button class="btn" onclick="load()">Try again</button>` } return }
   data=d; token=d.run?.token||""; render() }
-function phase(){ const r=data.run; if(!r) return "home";
+function phase(){ const r=data.run, lo=data.team&&data.team.loggedOffAt; if(!r) return lo&&Date.now()-new Date(lo)<12*3600e3?"done":"home";
   if(r.state==="out"&&r.mode==="live") return "live";
   if(r.state==="out") return "office";
   if(r.doneAt) return "done";
@@ -188,7 +188,7 @@ function render(){
   // home
   $("#sub").textContent=t.large?"Your team can take large trees":"Primrose Hospice Christmas Tree Collection";
   m.innerHTML=`<div class="home">${data.selfService?`<button class="btn bigbtn" data-start>Start a run</button>`:`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
-    <button class="btn ghost" data-v="summary">What we've done</button>${statBlock()}<div class="sub">You'll get one collection at a time. Mark it, and the next one appears. When the van's full, tap <b>Van full</b> and head back.</div><div class="bar">${call}</div></div>`;
+    <button class="btn ghost" data-v="summary">What we've done</button><button class="btn blue" data-logoff>We're done for the day</button>${statBlock()}<div class="sub">You'll get one collection at a time. Mark it, and the next one appears. When the van's full, tap <b>Van full</b> and head back.</div><div class="bar">${call}</div></div>`;
 }
 function whereStart(){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Where are you starting from?</h2><div class="sub">We'll send you somewhere no other team is working.</div>
@@ -219,6 +219,9 @@ document.addEventListener("click",async e=>{
     let p=null; if(geoOK) p=await getPos(6000);
     await rpc("team_fill",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null}); await load(); window.scrollTo(0,0); return }
   if(e.target.closest("[data-again]")){ await rpc("team_fill",{p_token:teamToken}); await load(); return }
+  if(e.target.closest("[data-logoff]")){ if(!await ask("Done for the day?","The office will see your team as logged off. You can still start another run later from the Home page.","Done for the day")) return;
+    busy=true; const res=await rpc("team_logoff",{p_token:teamToken}); busy=false;
+    if(res&&res.error) toast(res.error==="on_run"?"Finish your run first":"Couldn't save. Try again."); view="home"; await load(); window.scrollTo(0,0); return }
   const fu=e.target.closest("[data-full]");
   if(fu){ if(!await ask("Van full?","Any collections you haven't done go back on the list for other teams. Then head back to the depot to unload.","Van full")) return;
     busy=true; fu.disabled=true; const res=await rpc("team_vanfull",{p_token:teamToken}); busy=false;
