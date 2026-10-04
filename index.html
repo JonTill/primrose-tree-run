@@ -171,7 +171,7 @@ const MAX_STOPS=30; // sanity cap per run
 const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
-const TABS=[["dispatch","Dispatch"],["runs","Runs"],["map","Map"],["misses","Need attention"],["addresses","Addresses"],["teams","Teams"]];
+const TABS=[["dispatch","Dispatch"],["runs","Teams Status"],["map","Map"],["misses","Need attention"],["addresses","Addresses"],["teams","Teams"]];
 
 let stops=new Map(), runs=new Map(), teams=new Map(), settings={};
 let db=null, mcp=null, dl=null, tried=false, canWrite=true, me=null, got={stops:false,runs:false,teams:false};
@@ -460,6 +460,7 @@ function phaseChip(r){
 }
 function runPhase(r){
   if(r.state==="out") return "live";
+  if(r.doneAt&&![...runs.values()].some(o=>o!==r&&o.teamId===r.teamId&&(o.n||0)>(r.n||0))) return "off";
   if(r.officeClosedAt||r.doneAt||r.nextRun) return "done";
   if(r.unloadedAt||r.arrivedAt) return "unl";
   if(r.returningAt) return "ret";
@@ -472,16 +473,16 @@ function runRow(r){
 }
 function renderRuns(main){
   if(view.run && runs.has(view.run)) return renderRun(main,runs.get(view.run));
-  const sub=["live","ret","unl","done"].includes(view.sub)?view.sub:"live";
-  const all=[...runs.values()], by=k=>all.filter(r=>runPhase(r)===k).sort((a,b)=>k==="done"?b.n-a.n:a.n-b.n);
-  const g={live:by("live"),ret:by("ret"),unl:by("unl"),done:by("done")}, list=g[sub];
-  const empty={live:"No runs on the road. Build one on the Dispatch tab.",ret:"No teams heading back to unload.",unl:"No teams unloading at the depot.",done:"No completed runs yet."};
-  main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${g.done.length})</button></div>
+  const sub=["live","ret","unl","done","off"].includes(view.sub)?view.sub:"live";
+  const all=[...runs.values()], by=k=>all.filter(r=>runPhase(r)===k).sort((a,b)=>k==="done"||k==="off"?b.n-a.n:a.n-b.n);
+  const g={live:by("live"),ret:by("ret"),unl:by("unl"),done:by("done"),off:by("off")}, list=g[sub];
+  const empty={live:"No runs on the road. Build one on the Dispatch tab.",ret:"No teams heading back to unload.",unl:"No teams unloading at the depot.",done:"No completed runs yet.",off:"No teams have logged off yet."};
+  main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${g.done.length})</button><button data-sub="off" aria-pressed="${sub==="off"}">Logged off (${g.off.length})</button></div>
   ${list.length?`<div class="list">${list.map(runRow).join("")}</div>`:`<div class="empty">${empty[sub]}</div>`}`;
 }
 function renderRun(main,r){
   const list=runStops(r), open=list.filter(s=>s.status==="out").length, dis=canWrite?"":"disabled";
-  main.innerHTML=`<div class="row" style="justify-content:space-between"><button class="btn ghost" data-backlist>‹ All runs</button><span>${r.state==="out"?'<span class="chip out">On the road</span>':`<span class="chip done">Complete ${tm(r.backAt)}</span>`} ${phaseChip(r)}</span></div>
+  main.innerHTML=`<div class="row" style="justify-content:space-between"><button class="btn ghost" data-backlist>‹ Teams Status</button><span>${r.state==="out"?'<span class="chip out">On the road</span>':`<span class="chip done">Complete ${tm(r.backAt)}</span>`} ${phaseChip(r)}</span></div>
   <h2 style="margin-top:10px">Run ${r.n} · ${esc(r.team)}</h2>
   <div style="font-weight:700">${esc(whoRun(r))}</div>
   <div class="sub">${esc(areaOf(list))} · ${list.length} stops · ${r.trees} trees · sent ${tm(r.sentAt)}</div>
@@ -702,7 +703,7 @@ function renderTeams(main){
   main.innerHTML=`<div class="card"><h2>Office mobile</h2>
    <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on messages, emails and run sheets</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Driver options</h2>
-   <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as Dispatch and show <b>Driver asked</b> on the Runs tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
+   <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as Dispatch and show <b>Driver asked</b> on the Teams Status tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Trees per run</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
