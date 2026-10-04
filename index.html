@@ -172,7 +172,7 @@ const MAX_STOPS=30; // sanity cap per run
 const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
-const TABS=[["dispatch","Dispatch"],["runs","Teams Status"],["map","Map"],["misses","Need attention"],["addresses","Addresses"],["teams","Teams"]];
+const TABS=[["dispatch","Dispatch"],["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"]];
 
 let stops=new Map(), runs=new Map(), teams=new Map(), settings={};
 let db=null, mcp=null, dl=null, tried=false, canWrite=true, me=null, got={stops:false,runs:false,teams:false};
