@@ -100,6 +100,7 @@ option{color:var(--fg)}
 .steps{display:flex;flex-wrap:wrap;gap:6px}
 .banner{padding:10px 12px;border-radius:10px;background:var(--warn-soft);color:var(--fg);font-size:.9rem}
 .empty{padding:24px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.tbtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:230px}.tact{display:flex;flex-direction:column;gap:6px;min-width:140px}.btn.tsm{padding:8px 10px;font-size:.85rem;white-space:nowrap;text-align:center;margin:0}
 .tw{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
 table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
 th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
@@ -207,7 +208,7 @@ function renderTally(){
   const t=treeTally(), w=n=>t.total?n/t.total*100:0;
   $("#tally").innerHTML=`<div class="tally">
     <div class="tile c"><span>Collected</span><b>${t.collected}</b><small>of ${t.total} trees</small></div>
-    <div class="tile r"><span>On the road</span><b>${t.onRoad}</b><small>${(n=>`${n} run${n===1?"":"s"} out`)([...runs.values()].filter(r=>r.state==="out").length)}</small></div>
+    <div class="tile r"><span>On the road</span>${(()=>{const out=[...runs.values()].filter(r=>r.state==="out"), ids=new Set(out.map(r=>r.id)), ob=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&ids.has(s.run)?s.trees:0),0); return `<b>${out.length}</b><small>team${out.length===1?"":"s"} out · ${ob} on board · ${t.onRoad} to collect</small>`})()}</div>
     <div class="tile o"><span>Outstanding</span><b>${t.outstanding-t.onRoad}</b><small>${t.outAreaN?`<span class="oa">+${t.outAreaN} out of area</span>`:"waiting for a run"}</small></div>
     <div class="tile m"><span>Missed</span><b>${t.missed}</b><small>${t.closed?`${t.closed} closed after 2nd try`:"waiting on customer"}</small></div></div>
     <div class="pbar" aria-hidden="true"><i style="width:${w(t.collected)}%;background:var(--ok)"></i><i style="width:${w(t.onRoad)}%;background:var(--yellow)"></i><i style="width:${w(t.missed+t.closed)}%;background:var(--bad)"></i></div>`;
@@ -586,7 +587,7 @@ function renderAddresses(main){
   <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${s.large?' <span class="chip out">Large tree</span>':""}${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · ${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
-const VEHICLES=["Estate car","Estate car & trailer","Pickup truck","Small van","Transit van","Large van / Luton","Other"];
+const VEHICLES=["4x4 & trailer","Pickup truck","Small van","Transit van","Large van / Luton","Other"];
 function editTeam(t){
   return new Promise(res=>{
     const s0=(t.slots||[])[0]||{}, days=new Set((t.slots||[]).map(x=>x.day)), veh=VEHICLES.includes(t.vehicle)||!t.vehicle?VEHICLES:[...VEHICLES,t.vehicle];
@@ -659,8 +660,8 @@ const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"dr
 const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
 const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,"");
 function teamWa(t){ const txt=`Hi ${t.contact||""}, here's the ${t.name} link for the Primrose Hospice Christmas tree collection. Keep it handy all weekend.\n\nWhen you're ready, tap Start a run. It gives you one collection at a time and the next one appears when you mark it. When the van's full, tap Van full and head back to the depot.\n\n${teamLink(t)}`; const n=intlPhone(t.phone); return (n?`https://wa.me/${n}`:`https://wa.me/`)+`?text=${encodeURIComponent(txt)}` }
-function teamLinkCell(t,dis){ if(!t.teamToken) return `<button class="btn ghost" data-mklink="${esc(t.id)}" ${dis}>Create link</button>`;
-  return `${t.paused?'<span class="chip bad">Paused</span> ':""}<a class="btn" style="background:#25D366;border-color:#25D366;color:#0b1512" href="${teamWa(t)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" data-cplink="${esc(t.id)}">Copy</button><button class="btn ghost" data-pause="${esc(t.id)}" ${dis}>${t.paused?"Resume":"Pause"}</button><button class="btn ghost" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>New link</button>` }
+function teamLinkCell(t,dis){ if(!t.teamToken) return `<button class="btn ghost tsm" data-mklink="${esc(t.id)}" ${dis}>Create link</button>`;
+  return `${t.paused?'<div style="margin-bottom:6px"><span class="chip bad">Jobs paused</span></div>':""}<div class="tbtns"><a class="btn tsm" style="background:#25D366;border-color:#25D366;color:#0b1512" href="${teamWa(t)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost tsm" data-cplink="${esc(t.id)}">Copy Link</button><button class="btn ghost tsm" data-pause="${esc(t.id)}" ${dis}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>Reset Link</button></div>` }
 
 /* ---------- map of teams ---------- */
 let MAP=null, mapEl=null, mapLayers=null, mapPos=[], mapPosAt=0, leafletLoading=null;
@@ -715,11 +716,11 @@ function renderTeams(main){
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Start a run</b> and get one collection at a time until the van is full. Send it once by WhatsApp. <b>Pause</b> stops a team getting new jobs; <b>New link</b> stops the old link working.</div>
+  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Start a run</b> and get one collection at a time until the van is full. Send it once by WhatsApp. <b>Pause Jobs</b> stops a team getting new jobs; <b>Reset Link</b> makes a new link and stops the old one working.</div>
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees/run</th><th>Agreed times</th><th>Runs</th><th>Trees collected</th><th>Team link</th><th></th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td>${teamLinkCell(t,dis)}</td><td><button class="btn ghost" data-editteam="${esc(t.id)}" ${dis}>Edit</button><button class="btn ghost" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td>${n}${b?` <span class="chip out">Out</span>`:""}</td><td>${col}</td><td>${teamLinkCell(t,dis)}</td><td><div class="tact"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit</button><button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>${n?"":`<button class="btn ghost tsm" data-delteam="${esc(t.id)}" ${dis}>Remove</button>`}</div></td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -894,11 +895,11 @@ async function act(b,d){
   if(d.rebook){ const s=stops.get(+d.rebook); await rebook(s); toast(`${s.name} rebooked`); return }
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
   if(d.final){ const s=stops.get(+d.final); if(await sendEmail(s,"final")){ await patch("stops/"+sid(s.ref),{status:"Closed",finalEmailAt:new Date().toISOString()}); toast(`Final email sent to ${s.name}`) } return }
-  if(d.mklink){ const t=teams.get(d.mklink); if(!t) return; if(d.renew&&!await confirmBox("Make a new link?",`${t.name}'s old link will stop working. Send them the new one.`,"New link")) return;
+  if(d.mklink){ const t=teams.get(d.mklink); if(!t) return; if(d.renew&&!await confirmBox("Reset link?",`${t.name}'s old link will stop working. Send them the new one.`,"Reset Link")) return;
     if(await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Send it by WhatsApp.`); return }
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
   if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); if(ok) toast(`${t.name} link copied`); else if(ok===false) toast("Couldn't copy"); return }
-  if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name} resumed`:`${t.name} paused: no new jobs`); return }
+  if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name}: jobs resumed`:`${t.name}: jobs paused`); return }
   if(d.closerun){ const r=runs.get(d.closerun); if(r&&await patch("runs/"+r.id,{officeClosedAt:new Date().toISOString(),officeClosedBy:me||""})) toast(`Run ${r.n} moved to Completed`); return }
   if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
