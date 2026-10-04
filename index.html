@@ -462,7 +462,8 @@ function runPhase(r){
   if(r.state==="out") return "live";
   if(r.doneAt&&![...runs.values()].some(o=>o!==r&&o.teamId===r.teamId&&(o.n||0)>(r.n||0))) return "off";
   if(r.officeClosedAt||r.doneAt||r.nextRun) return "done";
-  if(r.unloadedAt||r.arrivedAt) return "unl";
+  if(r.unloadedAt) return "done";
+  if(r.arrivedAt) return "unl";
   if(r.returningAt) return "ret";
   return "done";
 }
