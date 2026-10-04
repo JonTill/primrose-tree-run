@@ -549,8 +549,8 @@ function missCard(s){
   const ph=s.photoAt&&s.photoKind==="missed"?`<div class="row" style="align-items:center;gap:10px">${photoBtn(s,"missed")}<span class="hint">Driver's photo ${tm(s.photoAt)}. Tap to enlarge.</span></div>`:(s.noPhotoAt&&s.noPhotoKind==="missed"&&s.status!=="Closed"?`<div class="hint">Driver didn't take a photo.</div>`:"");
   return `<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${state}</div>
    <div>${esc(short(s.address))}, ${esc(s.postcode)}</div>${ph}
-   <div class="hint">${esc(s.email||"No email address")} · missed ${tm(s.missedAt)}${s.missRun?` on run ${s.missRun}${runOf(s.missRun)?` (${esc(runOf(s.missRun).team)} · ${esc(whoRun(runOf(s.missRun)))})`:""}`:""}</div>
-   ${acts?`<div class="steps">${acts}</div>`:""}</div>`;
+   <div class="hint">${s.phone?"Tel "+esc(s.phone):"No phone"} · ${esc(s.email||"No email address")} · missed ${tm(s.missedAt)}${s.missRun?` on run ${s.missRun}${runOf(s.missRun)?` (${esc(runOf(s.missRun).team)} · ${esc(whoRun(runOf(s.missRun)))})`:""}`:""}</div>
+   ${s.status!=="Closed"?`<div class="steps">${acts}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-mremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button></div>`:acts?`<div class="steps">${acts}</div>`:""}</div>`;
 }
 
 /* ---------- addresses: search, edit, add ---------- */
@@ -892,6 +892,7 @@ async function act(b,d){
   if(d.edit){ await editStop(stops.get(+d.edit)); return }
   if("addstop" in d){ await editStop(null); return }
   if(d.oaauth){ const s=stops.get(+d.oaauth); if(await confirmBox("Authorise this collection?",`${s.name}, ${short(s.address)}, ${s.postcode} is ${Math.round(km(s,DEPOT))} km from the depot. It goes on the to-do list and is planned with stops on the way back.`,"Authorise")){ await patch("stops/"+sid(s.ref),{oaAuth:true,oaAuthAt:new Date().toISOString(),oaAuthBy:me||""}); toast(`${s.name} authorised`) } return }
+  if(d.mremove){ const s=stops.get(+d.mremove); if(await confirmBox("Remove this address?",`${s.name}, ${short(s.address)}, ${s.postcode} will be taken off the collection. No email is sent.`,"Remove")){ await patch("stops/"+sid(s.ref),{status:"Closed",closedReason:"Removed by office",closedAt:new Date().toISOString()}); toast(`${s.name} removed`) } return }
   if(d.oaremove){ const s=stops.get(+d.oaremove); if(await confirmBox("Remove this address?",`${s.name}, ${short(s.address)}, ${s.postcode} will be taken off the collection. No email is sent.`,"Remove")){ await patch("stops/"+sid(s.ref),{status:"Closed",closedReason:"Out of area",closedAt:new Date().toISOString()}); toast(`${s.name} removed`) } return }
   if(d.rebook){ const s=stops.get(+d.rebook); await rebook(s); toast(`${s.name} rebooked`); return }
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
