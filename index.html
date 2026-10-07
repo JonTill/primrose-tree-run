@@ -505,7 +505,7 @@ function stopCard(s,i,r){
   const one=encodeURIComponent(short(s.address)+", "+s.postcode);
   return `<div class="stop" data-s="${esc(s.status)}">
    <div class="st-top"><div class="st-n">${i}</div>
-    <div class="st-body"><div class="st-name">${esc(s.name)} ${s.rebooked?'<span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}</div>
+    <div class="st-body"><div class="st-name">${esc(s.name)} ${s.rebooked?'<span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}${s.bookedTrees&&s.bookedTrees!=s.trees?` <span class="chip done">${s.trees} trees · booked ${s.bookedTrees}</span>`:""}</div>
      <div class="st-addr"><a href="https://www.google.com/maps/search/?api=1&query=${one}" target="_blank" rel="noopener">${esc(short(s.address))}, ${esc(s.postcode)}</a></div>
      <div class="st-info"><span>Tree: <b>${esc(s.where)}</b></span><span>Phone: <b>${s.phone?esc(s.phone):"none given"}</b></span></div></div>
     <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
@@ -579,11 +579,15 @@ function statusChip(s){ if(outArea(s)) return '<span class="chip bad">Out of are
 function renderAddresses(main){
   const q=($("#addr-q")?.value??view.q??"").trim().toLowerCase();
   const all=[...stops.values()].sort((a,b)=>a.ref-b.ref);
-  const hits=q?all.filter(s=>[s.name,s.address,s.postcode,s.phone,s.email,String(s.ref)].join(" ").toLowerCase().includes(q)):all;
+  const cat=s=>s.status==="Collected"||s.status==="Closed"?"done":(s.status==="Missed"||outArea(s))?"iss":"todo";
+  const asub=["todo","iss","done"].includes(view.asub)?view.asub:"todo", cnt={todo:0,iss:0,done:0}; for(const s of all) cnt[cat(s)]++;
+  const hit=s=>[s.name,s.address,s.postcode,s.phone,s.email,String(s.ref)].join(" ").toLowerCase().includes(q);
+  const pool=all.filter(s=>cat(s)===asub), hits=q?pool.filter(hit):pool, other=q?all.filter(s=>cat(s)!==asub&&hit(s)).length:0;
   const shown=hits.slice(0,40);
-  main.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2>Addresses (${all.length})</h2><button class="btn" data-addstop ${canWrite?"":"disabled"}>Add a collection</button></div>
+  main.innerHTML=`<div class="subtabs" role="tablist"><button data-asub="todo" aria-pressed="${asub==="todo"}">To collect (${cnt.todo})</button><button data-asub="iss" aria-pressed="${asub==="iss"}">Issues (${cnt.iss})</button><button data-asub="done" aria-pressed="${asub==="done"}">Completed (${cnt.done})</button></div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Addresses (${all.length})</h2><button class="btn" data-addstop ${canWrite?"":"disabled"}>Add a collection</button></div>
    <div class="field"><label for="addr-q">Search name, address, postcode or phone</label><input id="addr-q" type="text" value="${esc(q)}" placeholder="e.g. Hill Lane or B60 3"></div>
-   <div class="hint">${q?`${hits.length} match${hits.length===1?"":"es"}`:"Showing the first 40. Search to find others."}${hits.length>40?" · showing the first 40":""}</div></div>
+   <div class="hint">${({todo:"Waiting or on the road.",iss:"Missed, or out of area: handle them on Needs attention.",done:"Collected, or closed."})[asub]} ${q?`${hits.length} match${hits.length===1?"":"es"} here${other?` · ${other} more in the other tabs`:""}`:hits.length>40?"Showing the first 40. Search to find others.":""}${q&&hits.length>40?" · showing the first 40":""}</div></div>
   <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${s.large?' <span class="chip out">Large tree</span>':""}${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · ${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
@@ -826,6 +830,7 @@ document.addEventListener("click",async e=>{
   const b=e.target.closest("button"); if(!b) return; const d=b.dataset;
   if(d.photoview){ viewPhoto(+d.photoview,d.pk); return }
   if(d.sub){view.sub=d.sub;save();render();return}
+  if(d.asub){view.asub=d.asub;save();render();return}
   if(d.tab){view={tab:d.tab,run:null,sub:"live"};save();render();window.scrollTo(0,0);return}
   if(d.run){view={tab:"runs",run:d.run,sub:view.sub};save();render();window.scrollTo(0,0);return}
   if("backlist" in d){view.run=null;save();render();return}
