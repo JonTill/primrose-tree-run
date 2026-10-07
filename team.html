@@ -139,12 +139,26 @@ function treesAsk(s){return new Promise(res=>{const m=document.createElement("di
   m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d){inp.value=Math.min(29,Math.max(1,(parseInt(inp.value,10)||1)+(+d.dataset.d)));tot();return}
     if(e.target.closest("[data-ok]")){const v=parseInt(inp.value,10); if(!(v>=1&&v<=29)){inp.focus();return} m.remove(); return res(b0+v)}
     if(e.target.closest("[data-x]")){m.remove(); res(null)} }); document.body.appendChild(m)})}
-function confirmAct(s,v,why,n){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
-  const t={Collected:"Confirm collected",Extra:"Confirm collected",Missed:"Confirm missed",Skipped:"Confirm skipped",out:"Undo this stop?"}[v]||"Confirm";
-  const line=v==="Collected"?`<b>${s.trees}</b> tree${s.trees===1?"":"s"} on board.`:v==="Extra"?`<b>${n}</b> trees on board (${b0} booked + ${n-b0} extra).`:v==="Missed"?"No tree out. You'll be asked for a photo next.":v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
+function confirmAct(s,v,why){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, cf=why==="Can't find address";
+  const t=v==="Collected"?"Confirm collected":v==="out"?"Undo this stop?":cf?"Can't find the address":"Confirm not collected";
+  const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. Any extra trees here?</div>
+   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="0" max="29" value="0"><button data-d="1" aria-label="One more">+</button></div>
+   <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?"The office will check the address and contact the customer.":"No tree out. You'll be asked for a photo next."):v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${t}</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="sub" style="font-size:1rem">${line}</div>
-   <button class="btn${v==="Missed"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
-  m.addEventListener("click",e=>{ if(e.target.closest("[data-ok]")){m.remove();return res(true)} if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
+   <button class="btn${v==="Missed"||v==="Skipped"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
+  const inp=m.querySelector("#tq"), tot=()=>{ if(!inp) return; const n=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+n}</b> tree${b0+n===1?"":"s"}`}; tot(); inp&&inp.addEventListener("input",tot);
+  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d&&inp){inp.value=Math.min(29,Math.max(0,(parseInt(inp.value,10)||0)+(+d.dataset.d)));tot();return}
+    if(e.target.closest("[data-ok]")){ let n=0; if(inp){n=parseInt(inp.value,10); if(!(n>=0&&n<=29)){inp.focus();return}} m.remove(); return res(v==="Collected"?{extra:n,total:b0+n}:true)}
+    if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
+function notWhy(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Why couldn't you collect it?</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div>
+   <button class="btn bad" data-w="nt">No tree out</button><button class="btn bad" data-w="cf">Can't find the address</button>
+   <button class="btn" data-w="Van full">Van full</button><button class="btn" data-w="Tree too big">Tree too big</button>
+   <div class="bar"><input id="why-other" type="text" maxlength="100" placeholder="Other reason"><button class="btn" data-w="Other" style="width:auto">Other</button></div>
+   <button class="btn ghost" data-w="">Cancel</button></div>`;
+  m.addEventListener("click",e=>{const x=e.target.closest("[data-w]"); if(!x) return; let w=x.dataset.w; m.remove();
+    if(!w) return res(null); if(w==="nt") return res({v:"Missed",why:null}); if(w==="cf") return res({v:"Missed",why:"Can't find address"});
+    if(w==="Other"){const t=m.querySelector("#why-other").value.trim(); w=t?"Other: "+t:"Other"} res({v:"Skipped",why:w}) }); document.body.appendChild(m)})}
 function getPos(timeout){return new Promise(res=>{ if(!navigator.geolocation) return res(null);
   navigator.geolocation.getCurrentPosition(p=>{geoOK=true; lastPos={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy}; res(lastPos)},()=>res(null),{enableHighAccuracy:false,timeout:timeout||10000,maximumAge:60000}) })}
 let PC=null; async function pcLookup(p){ if(!PC) PC=await fetch("postcodes.json").then(r=>r.json()); const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1]}; const s=PC.sector[k.slice(0,-2)]; return s?{lat:s[0],lon:s[1]}:null }
@@ -182,7 +196,7 @@ function render(){
       <div class="ad">${esc(short(cur.address))}, ${esc(cur.postcode)}</div>
       <div class="info">Tree: <b>${esc(cur.where)}</b> · <b>${cur.trees}</b> tree${cur.trees>1?"s":""}${cur.phone?" · Tel "+esc(cur.phone):""}</div>
       <a class="btn" href="${nav}" target="_blank" rel="noopener">Navigate</a>
-      <div class="acts"><button class="got ${pend&&pend.ref===cur.ref&&pend.v==="Collected"?"sel":""}" data-mk="Collected">Collected</button><button class="xtr" data-xtr>Collected + Extra</button><button class="miss ${pend&&pend.ref===cur.ref&&pend.v==="Missed"?"sel":""}" data-mk="Missed">Missed</button><button class="skp" data-mk="Skipped">Skipped</button></div></div>
+      <div class="acts"><button class="got ${pend&&pend.ref===cur.ref&&pend.v==="Collected"?"sel":""}" data-mk="Collected">Collected</button><button class="miss" data-mk="Not">Not collected</button></div></div>
       ${nxt?`<div class="next">Then: <b>${esc(short(nxt.address))}, ${esc(nxt.postcode)}</b></div>`:""}
       <button class="full" data-full>Van full · head back to unload</button><div class="bar">${call}</div>`; return }
   if(ph==="office"){ $("#sub").textContent=`Run ${r.n} from the office`;
@@ -235,13 +249,14 @@ document.addEventListener("click",async e=>{
     await rpc("team_fill",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null}); await load(); window.scrollTo(0,0); return }
   const mk=e.target.closest("button[data-mk]");
   if(mk){ const cur=(data.jobs||[])[0]; if(!cur) return; const v2=mk.dataset.mk;
-    let why=null; if(v2==="Skipped"){ why=await skipWhy(cur); if(!why) return }
-    if(!await confirmAct(cur,v2,why)) return;
+    let v=v2, why=null, total=0;
+    if(v2==="Not"){ const nw=await notWhy(cur); if(!nw) return; v=nw.v; why=nw.why; if(!await confirmAct(cur,v,why)) return }
+    else { const r=await confirmAct(cur,"Collected"); if(!r) return; if(r.extra>0) total=r.total }
     busy=true; mk.disabled=true;
-    const res=await rpc("driver_set",{p_token:token,p_ref:cur.ref,p_status:v2,p_reason:why}); busy=false;
+    const res=total?await rpc("driver_trees",{p_token:token,p_ref:cur.ref,p_trees:total}):await rpc("driver_set",{p_token:token,p_ref:cur.ref,p_status:v,p_reason:why}); busy=false;
     if(!res){render();return} if(res.error){toast(res.error==="moved"?"The office has moved this one. Getting your next job.":"Couldn't save.");await load();return}
-    toast(v2==="Collected"?`Collected ${cur.trees} tree${cur.trees>1?"s":""}`:v2==="Missed"?"Marked missed":"Skipped: back on the list");
-    if(v2==="Missed"||why==="Tree too big") await photoStep(cur,v2==="Missed"?"missed":"toobig");
+    const got=total||cur.trees; toast(v==="Collected"?`Collected ${got} tree${got>1?"s":""}`:v==="Skipped"?"Not collected: back on the list":why==="Can't find address"?"Sent to the office to check":"Marked not collected");
+    if((v==="Missed"&&why!=="Can't find address")||why==="Tree too big") await photoStep(cur,v==="Missed"?"missed":"toobig");
     let p=null; if(geoOK) p=await getPos(6000);
     await rpc("team_fill",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null}); await load(); window.scrollTo(0,0); return }
   if(e.target.closest("[data-again]")){ await rpc("team_fill",{p_token:teamToken}); await load(); return }
