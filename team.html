@@ -143,7 +143,7 @@ function confirmAct(s,v,why){return new Promise(res=>{const m=document.createEle
   const t=v==="Collected"?"Confirm collected":v==="out"?"Undo this stop?":cf?"Can't find the address":"Confirm not collected";
   const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. Any extra trees here?</div>
    <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="0" max="29" value="0"><button data-d="1" aria-label="One more">+</button></div>
-   <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?"The office will check the address and contact the customer.":"No tree out. You'll be asked for a photo next."):v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
+   <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?"The office will check the address and contact the customer.":"No tree out. You'll be asked for a photo next."):v==="Skipped"?(why==="Van full"?"This one and any stops left on your run go back on the list for other teams. Then head back to the depot to unload.":`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`):"It goes back to not done.";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${t}</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="sub" style="font-size:1rem">${line}</div>
    <button class="btn${v==="Missed"||v==="Skipped"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
   const inp=m.querySelector("#tq"), tot=()=>{ if(!inp) return; const n=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+n}</b> tree${b0+n===1?"":"s"}`}; tot(); inp&&inp.addEventListener("input",tot);
@@ -257,6 +257,7 @@ document.addEventListener("click",async e=>{
     if(!res){render();return} if(res.error){toast(res.error==="moved"?"The office has moved this one. Getting your next job.":"Couldn't save.");await load();return}
     const got=total||cur.trees; toast(v==="Collected"?`Collected ${got} tree${got>1?"s":""}`:v==="Skipped"?"Not collected: back on the list":why==="Can't find address"?"Sent to the office to check":"Marked not collected");
     if((v==="Missed"&&why!=="Can't find address")||why==="Tree too big") await photoStep(cur,v==="Missed"?"missed":"toobig");
+    if(why==="Van full"){ await rpc("team_vanfull",{p_token:teamToken}); toast("Drive safely back to the depot"); await load(); window.scrollTo(0,0); return }
     let p=null; if(geoOK) p=await getPos(6000);
     await rpc("team_fill",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null}); await load(); window.scrollTo(0,0); return }
   if(e.target.closest("[data-again]")){ await rpc("team_fill",{p_token:teamToken}); await load(); return }
