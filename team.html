@@ -26,7 +26,8 @@ h1{font:900 1.5rem/1.1 var(--display);color:var(--blue);margin:8px 0 2px}
 .n{font:900 1.5rem var(--display);width:1.6em;text-align:center;flex:none}
 .body{flex:1;min-width:0}.name{font-weight:700}.addr{overflow-wrap:anywhere}.info{font-size:.9rem;color:var(--muted)}.info b{color:var(--fg)}
 .trees{font:900 1.5rem var(--display);text-align:right;line-height:1}.trees small{display:block;font:600 .65rem var(--body);color:var(--muted);text-transform:uppercase}
-.acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.xtr{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--blue);background:var(--surface);color:var(--blue);cursor:pointer}
 .miss{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--bad);background:var(--surface);color:var(--bad);cursor:pointer}
 .miss.on{background:var(--bad);color:#fff}
 .got{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--green);background:var(--surface);color:var(--green);cursor:pointer}
@@ -127,6 +128,14 @@ function photoStep(s,kind){return new Promise(res=>{const m=document.createEleme
   m.querySelector("input").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0]; if(f) fin(f)});
   m.querySelector("[data-np]").addEventListener("click",()=>fin(null));
   document.body.appendChild(m)})}
+function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, n=Math.max((s.trees||1)+1,b0+1);
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>More trees at ${esc(s.name)}?</h2><div class="sub">Booked: ${b0} tree${b0===1?"":"s"}. How many trees are you taking from here?</div>
+   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="30" value="${n}"><button data-d="1" aria-label="One more">+</button></div>
+   <button class="btn" data-ok>Mark collected</button><button class="btn ghost" data-x>Cancel</button></div>`;
+  const inp=m.querySelector("#tq");
+  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d){inp.value=Math.min(30,Math.max(1,(parseInt(inp.value,10)||1)+(+d.dataset.d)));return}
+    if(e.target.closest("[data-ok]")){const v=parseInt(inp.value,10); if(!(v>=1&&v<=30)){inp.focus();return} m.remove(); return res(v)}
+    if(e.target.closest("[data-x]")){m.remove(); res(null)} }); document.body.appendChild(m)})}
 function getPos(timeout){return new Promise(res=>{ if(!navigator.geolocation) return res(null);
   navigator.geolocation.getCurrentPosition(p=>{geoOK=true; lastPos={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy}; res(lastPos)},()=>res(null),{enableHighAccuracy:false,timeout:timeout||10000,maximumAge:60000}) })}
 let PC=null; async function pcLookup(p){ if(!PC) PC=await fetch("postcodes.json").then(r=>r.json()); const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1]}; const s=PC.sector[k.slice(0,-2)]; return s?{lat:s[0],lon:s[1]}:null }
@@ -164,7 +173,7 @@ function render(){
       <div class="ad">${esc(short(cur.address))}, ${esc(cur.postcode)}</div>
       <div class="info">Tree: <b>${esc(cur.where)}</b> · <b>${cur.trees}</b> tree${cur.trees>1?"s":""}${cur.phone?" · Tel "+esc(cur.phone):""}</div>
       <a class="btn" href="${nav}" target="_blank" rel="noopener">Navigate</a>
-      <div class="acts"><button class="got" data-mk="Collected">Collected</button><button class="miss" data-mk="Missed">Missed</button><button class="skp" data-mk="Skipped">Skipped</button></div></div>
+      <div class="acts"><button class="got" data-mk="Collected">Collected</button><button class="xtr" data-xtr>+ Extra trees</button><button class="miss" data-mk="Missed">Missed</button><button class="skp" data-mk="Skipped">Skipped</button></div></div>
       ${nxt?`<div class="next">Then: <b>${esc(short(nxt.address))}, ${esc(nxt.postcode)}</b></div>`:""}
       <button class="full" data-full>Van full · head back to unload</button><div class="bar">${call}</div>`; return }
   if(ph==="office"){ $("#sub").textContent=`Run ${r.n} from the office`;
@@ -209,6 +218,11 @@ document.addEventListener("click",async e=>{
     const res=await rpc("team_start",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null,p_acc:p?.acc??null}); busy=false;
     if(res&&res.error) toast(res.error==="none_left"?"There are no collections waiting. Thank you!":res.error==="paused"?"The office has paused your link.":res.error==="switched_off"?"The office will send your runs.":"Couldn't start a run. Call the office.");
     view="home"; await load(); window.scrollTo(0,0); return }
+  if(e.target.closest("button[data-xtr]")){ const cur=(data.jobs||[])[0]; if(!cur) return; const n=await treesAsk(cur); if(!n) return; busy=true;
+    const res=await rpc("driver_trees",{p_token:token,p_ref:cur.ref,p_trees:n}); busy=false;
+    if(!res){render();return} if(res.error){toast(res.error==="moved"?"The office has moved this one. Getting your next job.":"Couldn't save.");await load();return}
+    toast(`Collected ${n} tree${n===1?"":"s"}`); let p=null; if(geoOK) p=await getPos(6000);
+    await rpc("team_fill",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null}); await load(); window.scrollTo(0,0); return }
   const mk=e.target.closest("button[data-mk]");
   if(mk){ const cur=(data.jobs||[])[0]; if(!cur) return; const v2=mk.dataset.mk; let why=null; if(v2==="Skipped"){ why=await skipWhy(cur); if(!why) return }
     busy=true; mk.disabled=true;
