@@ -40,6 +40,11 @@ h1{font:900 1.5rem/1.1 var(--display);color:var(--blue);margin:8px 0 2px}
 .box .btn{width:100%}
 #why-other{flex:1 1 160px;font:inherit;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
 .nav{grid-column:1/-1}
+.clbl{font:800 .9rem var(--body);text-transform:uppercase;letter-spacing:.05em;color:var(--green)}.clbl .chip{text-transform:none;letter-spacing:0;vertical-align:1px}
+.q1{font:900 1.12rem/1.25 var(--display);overflow-wrap:anywhere}.ad1{font-size:1.15rem;font-weight:700;overflow-wrap:anywhere}.in1{font-size:1.05rem;font-weight:600}
+.tel{color:var(--blue);font-weight:800;text-decoration:none;white-space:nowrap}.btn.navb{background:var(--blue);border-color:var(--blue);color:#fff}
+.nxt{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;font-size:.95rem}.nxt .clbl{color:var(--muted);font-size:.75rem}.nxt .q2{font-weight:800;font-size:1.05rem;overflow-wrap:anywhere}
+
 .stop.c{border-color:var(--green);background:var(--ok-soft)}
 .done{font:900 1.15rem var(--display);padding:18px;border-radius:14px;border:0;background:var(--blue);color:#fff;cursor:pointer;width:100%}
 .done:disabled{background:var(--line);color:var(--muted);cursor:default}
@@ -104,11 +109,11 @@ function render(){
   m.innerHTML=`<div class="bar">${links.map((u,i)=>`<a class="btn" href="${u}" target="_blank" rel="noopener">${links.length>1?`Route part ${i+1}`:marked?"Route from here in Maps":"Open route in Maps"}</a>`).join("")}${callBtn}</div>
    <div class="prog">${got} collected · ${missed} missed${skipped?` · ${skipped} skipped`:""} · ${left} to go</div>
    ${list.map((s,i)=>`<div class="stop ${s.status==="Missed"?"m":s.status==="Collected"?"c":s.status==="Skipped"?"s":""} ${s.status==="moved"?"d":""}">
-     <div class="top"><div class="n">${i+1}</div><div class="body"><div class="name">${esc(s.name)} ${s.rebooked?'<span class="chip">2nd visit</span>':""}${s.extra?' <span class="chip ex">Extra</span>':""}${s.large?' <span class="chip big">Large tree</span>':""}</div>
-     <div class="addr">${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="info">Tree: <b>${esc(s.where)}</b> ${s.phone?" · Tel "+esc(s.phone):""}${s.booked&&s.booked!=s.trees?` · <b>booked ${s.booked}</b>`:""}</div></div>
-     <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
+     <div class="top"><div class="n">${i+1}</div><div class="body" style="display:flex;flex-direction:column;gap:4px"><div class="clbl">Collection${s.rebooked?' <span class="chip">2nd visit</span>':""}${s.extra?' <span class="chip ex">Extra</span>':""}${s.large?' <span class="chip big">Large tree</span>':""}</div>
+     <div class="q1">${s.trees} tree${s.trees>1?"s":""} · ${esc(s.name)}${s.phone?` · <a class="tel" href="tel:${esc(String(s.phone).replace(/\s/g,""))}">${esc(s.phone)}</a>`:""}</div>
+     <div class="ad1">${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="in1">Info: ${esc(s.where)}${s.booked&&s.booked!=s.trees?` · booked ${s.booked}`:""}</div></div></div>
      ${s.status==="moved"?'<div class="info">Taken off your run by the office.</div>':
-      `<div class="acts">${live&&s.status==="out"?`<a class="btn ghost nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
+      `<div class="acts">${live&&s.status==="out"?`<a class="btn navb nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
        <button class="got ${s.status==="Collected"?"on":""} ${pend&&pend.ref===s.ref&&pend.b==="Collected"?"sel":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>Collected</button>
        <button class="miss ${s.status==="Missed"||s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Not" ${live?"":"disabled"}>Not collected</button>${pend&&pend.ref===s.ref?`<div class="cfmrow"><button class="btn${pend.v==="Missed"?" bad":""}" data-cfm>Confirm: ${pend.v==="out"?"undo":pend.v==="Collected"?"Collected":"Missed"}</button><button class="btn ghost" data-cx>Cancel</button></div>`:""}</div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
    </div>`).join("")}
