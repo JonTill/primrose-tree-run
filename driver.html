@@ -148,7 +148,7 @@ function confirmAct(s,v,why){return new Promise(res=>{const m=document.createEle
   const t=v==="Collected"?"Confirm collected":v==="out"?"Undo this stop?":cf?"Can't find the address":"Confirm not collected";
   const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. Any extra trees here?</div>
    <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="0" max="29" value="0"><button data-d="1" aria-label="One more">+</button></div>
-   <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?"The office will check the address and contact the customer.":"No tree out. You'll be asked for a photo next."):v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
+   <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?"The office will check the address and contact the customer.":"No tree out. You'll be asked for a photo next."):v==="Skipped"?(why==="Van full"?"This one and any stops left on your run go back on the list for other teams. Then head back to the depot to unload.":`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`):"It goes back to not done.";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${t}</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="sub" style="font-size:1rem">${line}</div>
    <button class="btn${v==="Missed"||v==="Skipped"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
   const inp=m.querySelector("#tq"), tot=()=>{ if(!inp) return; const n=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+n}</b> tree${b0+n===1?"":"s"}`}; tot(); inp&&inp.addEventListener("input",tot);
@@ -236,7 +236,9 @@ async function save(ref,v,why,b){
   const {data:res,error}=await sb.rpc("driver_set",{p_token:token,p_ref:+ref,p_status:v,p_reason:why});
   busy=false; if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
   s.status=v; s.skipReason=why; s.photo=false; if(why==="Tree too big") s.large=true; render(); toast(v==="out"?"Undone":v==="Collected"?"Marked collected":v==="Skipped"?"Not collected: back on the to-do list":why==="Can't find address"?"Sent to the office to check":"Marked not collected");
-  if((v==="Missed"&&why!=="Can't find address")||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() } load() }
+  if((v==="Missed"&&why!=="Can't find address")||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() }
+  if(why==="Van full"){ busy=true; const {data:r2,error:e2}=await sb.rpc("driver_vanfull",{p_token:token}); busy=false; if(e2||r2?.error) toast("Couldn't start the return. Tap Returning to unload when you're done."); else toast("Drive safely back to the depot"); window.scrollTo(0,0) }
+  load() }
 window.addEventListener("hashchange",()=>{token=(location.hash||"").replace(/^#/,"").trim(); data=null; render(); load(); window.scrollTo(0,0)});
 load(); setInterval(load,30000); document.addEventListener("visibilitychange",()=>{if(!document.hidden) load()});
 </script></body></html>
