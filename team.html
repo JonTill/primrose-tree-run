@@ -242,7 +242,7 @@ function render(){
       <button class="btn ghost" data-v="gohome">Home page</button>`; return }
   // home
   $("#sub").textContent=t.large?"Your team can take large trees":"Primrose Hospice Christmas Tree Collection";
-  m.innerHTML=`<div class="home">${data.selfService?`<button class="btn bigbtn" data-start>Start a run</button>`:`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
+  m.innerHTML=`<div class="home">${data.selfService?`<button class="btn bigbtn" data-start>Lets go get some Trees!</button>`:`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
     <button class="btn ghost" data-v="summary">What we've done</button><button class="btn blue" data-logoff>We're done for the day</button>${statBlock()}<div class="sub">You'll get one collection at a time. Mark it, and the next one appears. When the van's full, tap <b>Van full</b> and head back.</div><div class="bar">${call}</div></div>`;
 }
 function whereStart(){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
