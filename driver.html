@@ -26,6 +26,8 @@ h1{font:900 1.5rem/1.1 var(--display);color:var(--blue);margin:8px 0 2px}
 .body{flex:1;min-width:0}.name{font-weight:700}.addr{overflow-wrap:anywhere}.info{font-size:.9rem;color:var(--muted)}.info b{color:var(--fg)}
 .trees{font:900 1.5rem var(--display);text-align:right;line-height:1}.trees small{display:block;font:600 .65rem var(--body);color:var(--muted);text-transform:uppercase}
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sel{outline:4px solid var(--blue);outline-offset:2px}.btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+.cfmrow{display:grid;grid-template-columns:2fr 1fr;gap:8px;grid-column:1/-1}.cfmrow .btn{font-size:1.05rem;padding:14px}
 .xtr{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--blue);background:var(--surface);color:var(--blue);cursor:pointer}
 .miss{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--bad);background:var(--surface);color:var(--bad);cursor:pointer}
 .miss.on{background:var(--bad);color:#fff}
@@ -80,7 +82,7 @@ const DEPOT="19-21 Sherwood Road, Bromsgrove B60 3DR";
 let token=(location.hash||"").replace(/^#/,"").trim();
 const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const short=a=>String(a||"").replace(/, Worcestershire$/,"");
-let data=null, busy=false;
+let data=null, busy=false, pend=null;
 function toast(t){const e=$("#toast");e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2200)}
 const q=s=>encodeURIComponent(short(s.address)+", "+s.postcode);
 function routeLinks(list,here){const out=[];for(let i=0;i<list.length;i+=9){const part=list.slice(i,i+9);const start=i===0?(here?"":DEPOT):short(list[i-1].address)+", "+list[i-1].postcode;
@@ -107,10 +109,10 @@ function render(){
      <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
      ${s.status==="moved"?'<div class="info">Taken off your run by the office.</div>':
       `<div class="acts">${live&&s.status==="out"?`<a class="btn ghost nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
-       <button class="got ${s.status==="Collected"?"on":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>Collected</button>
-       <button class="xtr" data-xtr="${s.ref}" ${live&&s.status!=="Skipped"?"":"disabled"}>+ Extra trees</button>
-       <button class="miss ${s.status==="Missed"?"on":""}" data-ref="${s.ref}" data-v="Missed" ${live?"":"disabled"}>Missed</button>
-       <button class="skp ${s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Skipped" ${live?"":"disabled"}>Skipped</button></div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
+       <button class="got ${s.status==="Collected"?"on":""} ${pend&&pend.ref===s.ref&&pend.b==="Collected"?"sel":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>Collected</button>
+       <button class="xtr" data-xtr="${s.ref}" ${live&&s.status!=="Skipped"?"":"disabled"}>Collected + Extra</button>
+       <button class="miss ${s.status==="Missed"?"on":""} ${pend&&pend.ref===s.ref&&pend.b==="Missed"?"sel":""}" data-ref="${s.ref}" data-v="Missed" ${live?"":"disabled"}>Missed</button>
+       <button class="skp ${s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Skipped" ${live?"":"disabled"}>Skipped</button>${pend&&pend.ref===s.ref?`<div class="cfmrow"><button class="btn${pend.v==="Missed"?" bad":""}" data-cfm>Confirm: ${pend.v==="out"?"undo":pend.v==="Collected"?"Collected":"Missed"}</button><button class="btn ghost" data-cx>Cancel</button></div>`:""}</div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
    </div>`).join("")}
    ${left?`<button class="done" disabled>Mark every stop to finish · ${left} to go</button>`
      :`<div class="endp"><h2>All stops marked</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}. What next?</div>
@@ -144,13 +146,14 @@ async function step(btn,label,rpc,args){ if(busy) return null; busy=true; btn.di
   const {data:res,error}=await sb.rpc(rpc,{p_token:token,...(args||{})}); busy=false;
   if(error){toast("Couldn't save. Check signal and tap again."); btn.disabled=false; btn.textContent=old; return null} return res||{} }
 async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run",{p_token:token}); if(error){toast("No signal? Retrying…");return} data=d; render() }
-function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, n=Math.max((s.trees||1)+1,b0+1);
-  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>More trees at ${esc(s.name)}?</h2><div class="sub">Booked: ${b0} tree${b0===1?"":"s"}. How many trees are you taking from here?</div>
-   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="30" value="${n}"><button data-d="1" aria-label="One more">+</button></div>
-   <button class="btn" data-ok>Mark collected</button><button class="btn ghost" data-x>Cancel</button></div>`;
-  const inp=m.querySelector("#tq");
-  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d){inp.value=Math.min(30,Math.max(1,(parseInt(inp.value,10)||1)+(+d.dataset.d)));return}
-    if(e.target.closest("[data-ok]")){const v=parseInt(inp.value,10); if(!(v>=1&&v<=30)){inp.focus();return} m.remove(); return res(v)}
+function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Collected + Extra</h2><div class="sub">${esc(s.name)}: booked ${b0} tree${b0===1?"":"s"}. How many extra trees are you taking?</div>
+   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="29" value="1"><button data-d="1" aria-label="One more">+</button></div>
+   <div class="sub" id="tqt" style="text-align:center"></div>
+   <button class="btn" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
+  const inp=m.querySelector("#tq"), tot=()=>{const v=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+v}</b>`}; tot(); inp.addEventListener("input",tot);
+  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d){inp.value=Math.min(29,Math.max(1,(parseInt(inp.value,10)||1)+(+d.dataset.d)));tot();return}
+    if(e.target.closest("[data-ok]")){const v=parseInt(inp.value,10); if(!(v>=1&&v<=29)){inp.focus();return} m.remove(); return res(b0+v)}
     if(e.target.closest("[data-x]")){m.remove(); res(null)} }); document.body.appendChild(m)})}
 function skipWhy(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Why are you skipping ${esc(s.name)}?</h2><div class="sub">It goes back on the to-do list for another team.</div>
@@ -193,18 +196,23 @@ document.addEventListener("click",async e=>{
   const ap=e.target.closest("button[data-addphoto]");
   if(ap){ const s=data.stops.find(x=>String(x.ref)===ap.dataset.addphoto); await photoStep(s,s.status==="Missed"?"missed":"toobig"); render(); load(); return }
   const xt=e.target.closest("button[data-xtr]");
-  if(xt){ if(busy) return; const s=data.stops.find(x=>String(x.ref)===xt.dataset.xtr); const n=await treesAsk(s); if(!n) return; busy=true; xt.disabled=true;
+  if(xt){ if(busy) return; pend=null; const s=data.stops.find(x=>String(x.ref)===xt.dataset.xtr); const n=await treesAsk(s); if(!n) return; busy=true; xt.disabled=true;
     const {data:res,error}=await sb.rpc("driver_trees",{p_token:token,p_ref:s.ref,p_trees:n}); busy=false;
     if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
     s.booked=res.booked; s.trees=n; s.status="Collected"; render(); toast(`Collected ${n} tree${n===1?"":"s"}`); load(); return }
+  if(e.target.closest("button[data-cx]")){ pend=null; render(); return }
+  const cf=e.target.closest("button[data-cfm]");
+  if(cf){ if(!pend||busy) return; const p=pend; pend=null; return save(p.ref,p.v,null,cf) }
   const b=e.target.closest("button[data-ref]"); if(!b||busy) return;
   const s=data.stops.find(x=>String(x.ref)===b.dataset.ref); const v=s.status===b.dataset.v?"out":b.dataset.v;
-  let why=null; if(v==="Skipped"){ why=await skipWhy(s); if(!why) return }
-  busy=true; b.disabled=true;
-  const {data:res,error}=await sb.rpc("driver_set",{p_token:token,p_ref:+b.dataset.ref,p_status:v,p_reason:why});
+  if(v==="Skipped"){ const why=await skipWhy(s); if(!why) return; pend=null; return save(s.ref,v,why,b) }
+  pend={ref:s.ref,v,b:b.dataset.v}; render() });
+async function save(ref,v,why,b){
+  const s=data.stops.find(x=>x.ref===ref); busy=true; b.disabled=true;
+  const {data:res,error}=await sb.rpc("driver_set",{p_token:token,p_ref:+ref,p_status:v,p_reason:why});
   busy=false; if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
   s.status=v; s.skipReason=why; s.photo=false; if(why==="Tree too big") s.large=true; render(); toast(v==="out"?"Undone":v==="Collected"?"Marked collected":v==="Skipped"?"Skipped: back on the to-do list":"Marked missed");
-  if(v==="Missed"||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() } load() });
+  if(v==="Missed"||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() } load() }
 window.addEventListener("hashchange",()=>{token=(location.hash||"").replace(/^#/,"").trim(); data=null; render(); load(); window.scrollTo(0,0)});
 load(); setInterval(load,30000); document.addEventListener("visibilitychange",()=>{if(!document.hidden) load()});
 </script></body></html>
