@@ -457,7 +457,7 @@ function phaseChip(r){
   const tags=(r.mode==="live"?' <span class="chip">Team link</span>':"")+(r.vanFull?' <span class="chip">Van full</span>':"")+(r.auto?' <span class="chip">Driver asked</span>':"")+((r.extras||[]).length?` <span class="chip">+${r.extras.reduce((a,x)=>a+(x.refs||[]).length,0)} extra</span>`:"");
   if(r.state==="out") return tags;
   const nx=r.nextRun&&runs.get(r.nextRun);
-  return (r.doneAt?'<span class="chip done">Done for the day</span>':nx?`<span class="chip done">Took run ${nx.n}</span>`:r.unloadedAt?'<span class="chip warn">Unloaded · driver choosing</span>':r.arrivedAt?'<span class="chip warn">Unloading</span>':r.returningAt?'<span class="chip out">Returning to unload</span>':"")+tags;
+  return (r.doneAt?'<span class="chip done">Done for the day</span>':nx?`<span class="chip done">Took run ${nx.n}</span>`:r.unloadedAt?'<span class="chip warn">Unloaded · driver choosing</span>':r.arrivedAt?`<span class="chip warn">Unloading${dpTag(r)}</span>`:r.returningAt?`<span class="chip out">Returning to unload${dpTag(r)}</span>`:"")+tags;
 }
 function runPhase(r){
   if(r.state==="out") return "live";
@@ -494,7 +494,7 @@ function renderRun(main,r){
   <div class="hint" style="margin-bottom:8px">${r.emailedAt?`Emailed to ${esc(r.emailedTo)} ${tm(r.emailedAt)}.`:"Not emailed yet."} WhatsApp opens with the message ready: tap send.</div>
   ${r.auto?`<div class="hint" style="margin-bottom:6px">The driver asked for this run from their phone after unloading${r.prevRun&&runs.get(r.prevRun)?` run ${runs.get(r.prevRun).n}`:""}. It's already on their screen.</div>`:""}
   ${(r.extras||[]).map(x=>`<div class="hint" style="margin-bottom:6px">Driver added ${(x.refs||[]).length} extra stop${(x.refs||[]).length===1?"":"s"} (${x.trees} tree${x.trees===1?"":"s"}) ${tm(x.at)}.</div>`).join("")}
-  ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.returningAt&&`Returning to unload ${tm(r.returningAt)}`,r.arrivedAt&&`arrived at the depot ${tm(r.arrivedAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
+  ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.returningAt&&`Returning to unload${r.dropPoint?" at "+esc(r.dropPoint.name):""} ${tm(r.returningAt)}`,r.arrivedAt&&`arrived at the depot ${tm(r.arrivedAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
   ${runPhase(r)==="unl"||runPhase(r)==="ret"?`<div class="row" style="margin-bottom:8px;align-items:center"><span class="hint">${runPhase(r)==="ret"?"Still heading back.":r.unloadedAt?"Unloaded. Waiting for the driver to choose another run or done for the day.":"At the depot unloading."}</span><button class="btn ghost" data-closerun="${esc(r.id)}" ${canWrite?"":"disabled"}>Move to Completed</button></div>`:""}
   <textarea class="msg" id="msg" readonly aria-label="Driver message" hidden>${esc(message(r,list))}</textarea>
   ${open&&r.state==="out"?`<div class="hint" style="margin-bottom:8px">Tap <b>Missed</b> on any stop the team couldn't collect. When they're back, tap <b>Complete run</b>: every stop not marked Missed is counted as collected.</div>`:""}
@@ -684,6 +684,7 @@ function teamWhere(t,r){ const p=mapPos.find(x=>x.team_id===t.id); if(p&&Date.no
 function drawMap(){ if(!MAP||!window.L) return; mapLayers.clearLayers();
   L.circleMarker([DEPOT.lat,DEPOT.lon],{radius:9,color:"#00587B",fillColor:"#ffde0e",fillOpacity:1,weight:3}).bindTooltip("Depot").addTo(mapLayers);
   for(let k=0;k<8;k++){ const a=k*Math.PI/4; L.polyline([[DEPOT.lat,DEPOT.lon],[DEPOT.lat+Math.cos(a)*16/111,DEPOT.lon+Math.sin(a)*16/(111.32*Math.cos(52.35*Math.PI/180))]],{color:"#888",weight:1,opacity:.35,dashArray:"4 6",interactive:false}).addTo(mapLayers) }
+  for(const p of dropList()){ if(p.id==="hq"||p.lat==null) continue; L.circleMarker([p.lat,p.lon],{radius:9,color:"#00587B",fillColor:p.active===false?"#cccccc":"#ffde0e",fillOpacity:1,weight:3}).bindTooltip(`Drop-off: ${esc(p.name)}${p.active===false?" (off)":""}`).addTo(mapLayers) }
   for(const s of stops.values()){ if(s.lat==null) continue;
     if(s.status===""&&!outArea(s)) L.circleMarker([s.lat,s.lon],{radius:s.large?4:3,color:s.large?"#00587B":"#8a8f94",weight:1,fillOpacity:.6}).bindTooltip(`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large?" · large":""}`).addTo(mapLayers);
     else if(s.status==="out"){ const r=runs.get(s.run); L.circleMarker([s.lat,s.lon],{radius:6,color:"#00905e",weight:2,fillColor:"#00905e",fillOpacity:.9}).bindTooltip(`${esc(r?r.team:"")}: ${esc(s.name)}`).addTo(mapLayers) } }
@@ -704,6 +705,38 @@ async function renderMap(main){
   if(!MAP){ MAP=L.map(mapEl,{zoomControl:true}).setView([DEPOT.lat,DEPOT.lon],11); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(MAP); mapLayers=L.layerGroup().addTo(MAP) }
   setTimeout(()=>MAP.invalidateSize(),50); drawMap(); fetchPositions();
 }
+
+/* ---------- drop-off points ---------- */
+function dropList(){ const dp=settings.dropPoints||[]; const hq={id:"hq",name:"HQ depot",address:"19-21 Sherwood Road, Bromsgrove",postcode:"B60 3DR",...(dp.find(p=>p.id==="hq")||{}),id:"hq",lat:DEPOT.lat,lon:DEPOT.lon,active:true}; return [hq,...dp.filter(p=>p.id!=="hq")] }
+function dpTag(r){ return r.dropPoint&&dropList().length>1?` → ${esc(r.dropPoint.name)}`:"" }
+function dropStats(){ const st={}, today=new Date().toDateString();
+  for(const r of runs.values()){ if(!r.returningAt) continue; const id=r.dropPoint?.id||"hq"; const tr=[...stops.values()].reduce((a,s)=>a+(s.run===r.id&&s.status==="Collected"?s.trees:0),0);
+    const o=st[id]||(st[id]={today:0,all:0,runs:0}); o.all+=tr; o.runs++; if(new Date(r.returningAt).toDateString()===today) o.today+=tr }
+  return st }
+function editDrop(p){ return new Promise(async res=>{ try{ await loadPC() }catch(e){ toast("Couldn't load the postcode list. Reload the page and try again."); return res(false) }
+  const isNew=!p, hq=p&&p.id==="hq"; p=p||{name:"",address:"",postcode:"",hours:"",notes:"",active:true};
+  const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
+  d.innerHTML=`<div class="mbox" style="max-width:480px"><h2>${isNew?"Add a drop-off point":"Edit "+esc(p.name)}</h2>
+   <div class="field"><label for="dp-name">Name</label><input id="dp-name" type="text" value="${esc(p.name)}" placeholder="e.g. Redditch yard"></div>
+   <div class="row"><div class="field" style="flex:2 1 200px"><label for="dp-addr">Address</label><input id="dp-addr" type="text" value="${esc(p.address||"")}" ${hq?"disabled":""}></div><div class="field" style="flex:1 1 110px"><label for="dp-pc">Postcode</label><input id="dp-pc" type="text" value="${esc(p.postcode||"")}" ${hq?"disabled":""}></div></div>
+   <div class="field"><label for="dp-hours">Opening times (optional)</label><input id="dp-hours" type="text" value="${esc(p.hours||"")}" placeholder="e.g. 9am to 4pm"></div>
+   <div class="field"><label for="dp-notes">Notes for drivers (optional)</label><input id="dp-notes" type="text" value="${esc(p.notes||"")}" placeholder="e.g. Use the side gate"></div>
+   ${hq?'<div class="hint">HQ is always on and its address can\'t change.</div>':""}
+   <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Save</button></div></div>`;
+  const close=v=>{d.remove();res(v)};
+  d.addEventListener("click",async e=>{ e.stopPropagation(); const b=e.target.closest("[data-m]"); if(!b) return; if(b.dataset.m==="0") return close(false);
+    const q=id=>d.querySelector(id).value.trim(), name=q("#dp-name").slice(0,60);
+    if(!name){toast("Enter a name");return}
+    let upd={name,hours:q("#dp-hours").slice(0,80),notes:q("#dp-notes").slice(0,160)};
+    if(!hq){ const address=q("#dp-addr").slice(0,120), pc=normPC(q("#dp-pc")); if(!address||!pc){toast("Enter the address and postcode");return}
+      const g=geocode(pc); if(!g){toast("That postcode wasn't found. Check it and try again.");return}
+      upd={...upd,address,postcode:pc,lat:g.lat,lon:g.lon} }
+    const list=(settings.dropPoints||[]).filter(x=>x.id!=="hq"||!hq);
+    let next; if(isNew) next=[...(settings.dropPoints||[]),{id:"p"+Date.now().toString(36),active:true,...upd}];
+    else if(hq){ const cur=(settings.dropPoints||[]).find(x=>x.id==="hq")||{id:"hq"}; next=[{...cur,...upd,id:"hq"},...list.filter(x=>x.id!=="hq")] }
+    else next=(settings.dropPoints||[]).map(x=>x.id===p.id?{...x,...upd}:x);
+    b.disabled=true; const ok=await put("settings/main",{...settings,dropPoints:next}); b.disabled=false; if(ok) close(true) });
+  document.body.appendChild(d); d.querySelector("#dp-name").focus() }) }
 function renderTeams(main){
   const all=[...teams.values()].sort((a,b)=>(a.extra-b.extra)||a.name.localeCompare(b.name));
   const dis=canWrite?"":"disabled";
@@ -711,6 +744,9 @@ function renderTeams(main){
    <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on messages, emails and run sheets</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Driver options</h2>
    <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as Dispatch and show <b>Driver asked</b> on the Teams Status tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
+  <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. Office-built runs still start and end at HQ.</div>
+   ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"?'<span class="chip done">Default</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this weekend</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"?"":`<button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
+   <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Trees per run</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
@@ -910,6 +946,10 @@ async function act(b,d){
   if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name}: jobs resumed`:`${t.name}: jobs paused`); return }
   if(d.closerun){ const r=runs.get(d.closerun); if(r&&await patch("runs/"+r.id,{officeClosedAt:new Date().toISOString(),officeClosedBy:me||""})) toast(`Run ${r.n} moved to Completed`); return }
   if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
+  if("adddrop" in d){ if(await editDrop(null)) toast("Drop-off point added"); return }
+  if(d.editdrop){ const p=dropList().find(x=>x.id===d.editdrop); if(p&&await editDrop(p)) toast(`${p.name} saved`); return }
+  if(d.togdrop){ const p=(settings.dropPoints||[]).find(x=>x.id===d.togdrop); if(!p) return; if(await put("settings/main",{...settings,dropPoints:settings.dropPoints.map(x=>x.id===p.id?{...x,active:x.active===false}:x)})) toast(`${p.name} switched ${p.active===false?"on":"off"}`); return }
+  if(d.deldrop){ const p=(settings.dropPoints||[]).find(x=>x.id===d.deldrop); if(!p) return; if(!await confirmBox("Remove this drop-off point?",`${p.name} will be removed. Teams already heading there keep their directions.`,"Remove")) return; if(await put("settings/main",{...settings,dropPoints:settings.dropPoints.filter(x=>x.id!==p.id)})) toast(`${p.name} removed`); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
   if("addteam" in d){
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
