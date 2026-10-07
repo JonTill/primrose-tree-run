@@ -41,6 +41,11 @@ h1{font:900 1.5rem/1.1 var(--display);color:var(--blue);margin:8px 0 2px}
 .box .btn{width:100%}
 #why-other{flex:1 1 160px;font:inherit;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
 .nav{grid-column:1/-1}
+.clbl{font:800 .9rem var(--body);text-transform:uppercase;letter-spacing:.05em;color:var(--green)}.clbl .chip{text-transform:none;letter-spacing:0;vertical-align:1px}
+.q1{font:900 1.12rem/1.25 var(--display);overflow-wrap:anywhere}.ad1{font-size:1.15rem;font-weight:700;overflow-wrap:anywhere}.in1{font-size:1.05rem;font-weight:600}
+.tel{color:var(--blue);font-weight:800;text-decoration:none;white-space:nowrap}.btn.navb{background:var(--blue);border-color:var(--blue);color:#fff}
+.nxt{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;font-size:.95rem}.nxt .clbl{color:var(--muted);font-size:.75rem}.nxt .q2{font-weight:800;font-size:1.05rem;overflow-wrap:anywhere}
+
 .stop.c{border-color:var(--green);background:var(--ok-soft)}
 .done{font:900 1.15rem var(--display);padding:18px;border-radius:14px;border:0;background:var(--blue);color:#fff;cursor:pointer;width:100%}
 .done:disabled{background:var(--line);color:var(--muted);cursor:default}
@@ -191,14 +196,16 @@ function render(){
     $("#sub").innerHTML=`Run ${r.n} · ${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} on board${t.large?' · <span class="chip big">Large trees OK</span>':""}`;
     if(!cur){ m.innerHTML=`<div class="empty">No more collections near you right now.</div><button class="btn ghost" data-again>Check again</button><button class="full" data-full>Van full · head back to unload</button><div class="bar">${call}</div>`; return }
     const nav=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(short(cur.address)+", "+cur.postcode)}`;
-    m.innerHTML=`<div class="job"><div class="lbl">Your next collection</div>
-      <div class="nm">${esc(cur.name)} ${cur.rebooked?'<span class="chip">2nd visit</span>':""}${cur.large?' <span class="chip big">Large tree</span>':""}</div>
-      <div class="ad">${esc(short(cur.address))}, ${esc(cur.postcode)}</div>
-      <div class="info">Tree: <b>${esc(cur.where)}</b> · <b>${cur.trees}</b> tree${cur.trees>1?"s":""}${cur.phone?" · Tel "+esc(cur.phone):""}</div>
-      <a class="btn" href="${nav}" target="_blank" rel="noopener">Navigate</a>
-      <div class="acts"><button class="got ${pend&&pend.ref===cur.ref&&pend.v==="Collected"?"sel":""}" data-mk="Collected">Collected</button><button class="miss" data-mk="Not">Not collected</button></div></div>
-      ${nxt?`<div class="next">Then: <b>${esc(short(nxt.address))}, ${esc(nxt.postcode)}</b></div>`:""}
-      <button class="full" data-full>Van full · head back to unload</button><div class="bar">${call}</div>`; return }
+    const tel=x=>x.phone?` · <a class="tel" href="tel:${esc(String(x.phone).replace(/\s/g,""))}">${esc(x.phone)}</a>`:"";
+    m.innerHTML=`<div class="job"><div class="clbl">Collection${cur.rebooked?' <span class="chip">2nd visit</span>':""}${cur.large?' <span class="chip big">Large tree</span>':""}</div>
+      <div class="q1">${cur.trees} tree${cur.trees>1?"s":""} · ${esc(cur.name)}${tel(cur)}</div>
+      <div class="ad1">${esc(short(cur.address))}, ${esc(cur.postcode)}</div>
+      <div class="in1">Info: ${esc(cur.where)}</div>
+      <a class="btn navb" href="${nav}" target="_blank" rel="noopener">Navigate</a>
+      <div class="acts"><button class="got" data-mk="Collected">Collected</button><button class="miss" data-mk="Not">Not collected</button></div></div>
+      <button class="full" data-full>Van full · head back to unload</button>
+      ${nxt?`<div class="nxt"><div class="clbl">Next collection</div><div class="q2">${nxt.trees} tree${nxt.trees>1?"s":""} · ${esc(nxt.name)}${tel(nxt)}</div><div>${esc(short(nxt.address))}, ${esc(nxt.postcode)}</div><div style="color:var(--muted)">Info: ${esc(nxt.where)}</div></div>`:""}
+      <div class="bar">${call}</div>`; return }
   if(ph==="office"){ $("#sub").textContent=`Run ${r.n} from the office`;
     m.innerHTML=`<div class="endp"><h2>You have a run from the office</h2><div class="sub">Open it to see your stops.</div><a class="btn" href="driver.html#${esc(r.token)}">Open run ${r.n}</a></div>`; return }
   if(ph==="returning"){ $("#sub").textContent=`Run ${r.n} · ${r.collectedTrees||0} trees on board`;
