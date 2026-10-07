@@ -129,9 +129,10 @@ function endStage(r,got,missed,skipped,callBtn){
       ${p.allTrees>p.todayTrees?`<div class="sm">This weekend so far: <b>${p.allTrees} trees</b> on ${p.allRuns} runs</div>`:""}
       ${p.eventTrees?`<div class="sm">Everyone together: <b>${p.eventTrees} trees</b> collected so far</div>`:""}
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>`; }
-  if(!r.unloadedAt&&!r.arrivedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}. Drive back to the depot at ${esc(DEPOT)}. Tap the button when you get there.</div>
-      <a class="btn ghost" href="${depot}" target="_blank" rel="noopener">Route to the depot</a><button class="btn blue" data-arrived>Arrived at the depot</button></div><div class="bar">${callBtn}</div>`;
-  if(!r.unloadedAt) return `<div class="endp"><h2>Unloading</h2><div class="sub">Unload your ${got} tree${got===1?"":"s"} where the depot team shows you. Tap the button once the van is empty.</div>
+  const dp=dpOf(r);
+  if(!r.unloadedAt&&!r.arrivedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}.</div><div class="clbl">Drop-off point</div><div class="q1">${esc(dp.name)}</div><div class="ad1">${esc(dp.full)}</div>${dp.hours||dp.notes?`<div class="in1">${esc([dp.hours,dp.notes].filter(Boolean).join(" · "))}</div>`:""}
+      <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Route to ${esc(dp.name)}</a><button class="btn blue" data-arrived>Arrived at ${esc(dp.name)}</button>${(data.dropPoints||[]).length>1?`<button class="btn ghost" data-chdrop>Change drop-off point</button>`:""}</div><div class="bar">${callBtn}</div>`;
+  if(!r.unloadedAt) return `<div class="endp"><h2>Unloading at ${esc(dp.name)}</h2><div class="sub">Unload your ${got} tree${got===1?"":"s"} where you're shown. Tap the button once the van is empty.</div>
       <button class="btn blue" data-unloaded>Unloaded</button></div><div class="bar">${callBtn}</div>`;
   return `<div class="endp"><h2>Unloaded. Thank you!</h2><div class="sub">Run ${r.n} is done. Ready for more?</div>
       ${data.selfService?`<button class="btn" data-nextrun>Give me another run</button>`:`<div class="sub">Call the office if you'd like another run.</div>`}
@@ -149,6 +150,13 @@ async function step(btn,label,rpc,args){ if(busy) return null; busy=true; btn.di
   const {data:res,error}=await sb.rpc(rpc,{p_token:token,...(args||{})}); busy=false;
   if(error){toast("Couldn't save. Check signal and tap again."); btn.disabled=false; btn.textContent=old; return null} return res||{} }
 async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run",{p_token:token}); if(error){toast("No signal? Retrying…");return} data=d; render() }
+function dropPick(pts,cur,title){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
+  const km=(a,b,c,d)=>{const R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
+  const draw=pos=>{ const list=pts.map(p=>({p,d:pos?km(pos.lat,pos.lon,+p.lat,+p.lon):null})); if(pos) list.sort((a,b)=>a.d-b.d);
+    m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${esc(title||"Where are you unloading?")}</h2>${list.map(({p,d})=>`<button class="btn ${cur&&cur.id===p.id?"":"ghost"}" data-dp="${esc(p.id)}" style="text-align:left"><b>${esc(p.name)}</b>${d!=null?` · ${d.toFixed(1)} km`:""}<br><span style="font-weight:400;font-size:.9rem">${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}${p.hours?" · "+esc(p.hours):""}</span></button>`).join("")}<button class="btn ghost" data-dp="">Cancel</button></div>` };
+  draw(null); if(navigator.geolocation) navigator.geolocation.getCurrentPosition(g=>{ if(m.isConnected) draw({lat:g.coords.latitude,lon:g.coords.longitude}) },()=>{},{timeout:6000,maximumAge:300000});
+  m.addEventListener("click",e=>{const x=e.target.closest("[data-dp]"); if(!x) return; m.remove(); res(x.dataset.dp||null)}); document.body.appendChild(m)})}
+function dpOf(r){ const p=r&&r.dropPoint||{id:"hq",name:"HQ depot",address:"19-21 Sherwood Road, Bromsgrove",postcode:"B60 3DR"}; return {...p,full:`${p.address||""}${p.postcode?", "+p.postcode:""}`} }
 function confirmAct(s,v,why){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, cf=why==="Can't find address";
   const t=v==="Collected"?"Confirm collected":v==="out"?"Undo this stop?":cf?"Can't find the address":"Confirm not collected";
   const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. Any extra trees here?</div>
@@ -201,6 +209,7 @@ function ask(title,text,ok){return new Promise(res=>{const m=document.createElem
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${esc(title)}</h2><div>${esc(text)}</div><div class="bar"><button class="btn ghost" data-x="0">Cancel</button><button class="btn" data-x="1" style="background:var(--blue);border-color:var(--blue)">${esc(ok)}</button></div></div>`;
   m.addEventListener("click",e=>{const x=e.target.closest("[data-x]"); if(!x&&e.target!==m) return; m.remove(); res(x?.dataset.x==="1")}); document.body.appendChild(m)})}
 document.addEventListener("click",async e=>{
+  if(e.target.closest("button[data-chdrop]")){ if(busy) return; const id=await dropPick(data.dropPoints||[],data.run.dropPoint); if(!id) return; busy=true; const {data:res,error}=await sb.rpc("driver_set_drop",{p_token:token,p_id:id}); busy=false; if(error||res?.error) toast("Couldn't change it. Try again."); else toast(`Unloading at ${res.dropPoint.name}`); await load(); return }
   const x=e.target.closest("button[data-extra],button[data-return],button[data-arrived],button[data-unloaded],button[data-nextrun],button[data-done]");
   if(x){ const k=x.dataset;
     if("extra" in k){ if(!(data.extraLeft>0)){toast("You've had the most extra collections for this run. Head back to unload.");return} const n=await howMany(data.extraLeft); if(!n) return; const res=await step(x,"Finding collections…","driver_extra",{p_trees:n}); if(!res) return;
