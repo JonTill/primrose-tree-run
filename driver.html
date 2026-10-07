@@ -25,7 +25,8 @@ h1{font:900 1.5rem/1.1 var(--display);color:var(--blue);margin:8px 0 2px}
 .n{font:900 1.5rem var(--display);width:1.6em;text-align:center;flex:none}
 .body{flex:1;min-width:0}.name{font-weight:700}.addr{overflow-wrap:anywhere}.info{font-size:.9rem;color:var(--muted)}.info b{color:var(--fg)}
 .trees{font:900 1.5rem var(--display);text-align:right;line-height:1}.trees small{display:block;font:600 .65rem var(--body);color:var(--muted);text-transform:uppercase}
-.acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.xtr{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--blue);background:var(--surface);color:var(--blue);cursor:pointer}
 .miss{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--bad);background:var(--surface);color:var(--bad);cursor:pointer}
 .miss.on{background:var(--bad);color:#fff}
 .got{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--green);background:var(--surface);color:var(--green);cursor:pointer}
@@ -102,11 +103,12 @@ function render(){
    <div class="prog">${got} collected · ${missed} missed${skipped?` · ${skipped} skipped`:""} · ${left} to go</div>
    ${list.map((s,i)=>`<div class="stop ${s.status==="Missed"?"m":s.status==="Collected"?"c":s.status==="Skipped"?"s":""} ${s.status==="moved"?"d":""}">
      <div class="top"><div class="n">${i+1}</div><div class="body"><div class="name">${esc(s.name)} ${s.rebooked?'<span class="chip">2nd visit</span>':""}${s.extra?' <span class="chip ex">Extra</span>':""}${s.large?' <span class="chip big">Large tree</span>':""}</div>
-     <div class="addr">${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="info">Tree: <b>${esc(s.where)}</b> ${s.phone?" · Tel "+esc(s.phone):""}</div></div>
+     <div class="addr">${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="info">Tree: <b>${esc(s.where)}</b> ${s.phone?" · Tel "+esc(s.phone):""}${s.booked&&s.booked!=s.trees?` · <b>booked ${s.booked}</b>`:""}</div></div>
      <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
      ${s.status==="moved"?'<div class="info">Taken off your run by the office.</div>':
       `<div class="acts">${live&&s.status==="out"?`<a class="btn ghost nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
        <button class="got ${s.status==="Collected"?"on":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>Collected</button>
+       <button class="xtr" data-xtr="${s.ref}" ${live&&s.status!=="Skipped"?"":"disabled"}>+ Extra trees</button>
        <button class="miss ${s.status==="Missed"?"on":""}" data-ref="${s.ref}" data-v="Missed" ${live?"":"disabled"}>Missed</button>
        <button class="skp ${s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Skipped" ${live?"":"disabled"}>Skipped</button></div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
    </div>`).join("")}
@@ -142,6 +144,14 @@ async function step(btn,label,rpc,args){ if(busy) return null; busy=true; btn.di
   const {data:res,error}=await sb.rpc(rpc,{p_token:token,...(args||{})}); busy=false;
   if(error){toast("Couldn't save. Check signal and tap again."); btn.disabled=false; btn.textContent=old; return null} return res||{} }
 async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run",{p_token:token}); if(error){toast("No signal? Retrying…");return} data=d; render() }
+function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, n=Math.max((s.trees||1)+1,b0+1);
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>More trees at ${esc(s.name)}?</h2><div class="sub">Booked: ${b0} tree${b0===1?"":"s"}. How many trees are you taking from here?</div>
+   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="30" value="${n}"><button data-d="1" aria-label="One more">+</button></div>
+   <button class="btn" data-ok>Mark collected</button><button class="btn ghost" data-x>Cancel</button></div>`;
+  const inp=m.querySelector("#tq");
+  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d){inp.value=Math.min(30,Math.max(1,(parseInt(inp.value,10)||1)+(+d.dataset.d)));return}
+    if(e.target.closest("[data-ok]")){const v=parseInt(inp.value,10); if(!(v>=1&&v<=30)){inp.focus();return} m.remove(); return res(v)}
+    if(e.target.closest("[data-x]")){m.remove(); res(null)} }); document.body.appendChild(m)})}
 function skipWhy(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Why are you skipping ${esc(s.name)}?</h2><div class="sub">It goes back on the to-do list for another team.</div>
    <button class="btn" data-w="Van full">Van full</button><button class="btn" data-w="Tree too big">Tree too big</button>
@@ -182,6 +192,11 @@ document.addEventListener("click",async e=>{
     return }
   const ap=e.target.closest("button[data-addphoto]");
   if(ap){ const s=data.stops.find(x=>String(x.ref)===ap.dataset.addphoto); await photoStep(s,s.status==="Missed"?"missed":"toobig"); render(); load(); return }
+  const xt=e.target.closest("button[data-xtr]");
+  if(xt){ if(busy) return; const s=data.stops.find(x=>String(x.ref)===xt.dataset.xtr); const n=await treesAsk(s); if(!n) return; busy=true; xt.disabled=true;
+    const {data:res,error}=await sb.rpc("driver_trees",{p_token:token,p_ref:s.ref,p_trees:n}); busy=false;
+    if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
+    s.booked=res.booked; s.trees=n; s.status="Collected"; render(); toast(`Collected ${n} tree${n===1?"":"s"}`); load(); return }
   const b=e.target.closest("button[data-ref]"); if(!b||busy) return;
   const s=data.stops.find(x=>String(x.ref)===b.dataset.ref); const v=s.status===b.dataset.v?"out":b.dataset.v;
   let why=null; if(v==="Skipped"){ why=await skipWhy(s); if(!why) return }
