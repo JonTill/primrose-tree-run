@@ -110,9 +110,7 @@ function render(){
      ${s.status==="moved"?'<div class="info">Taken off your run by the office.</div>':
       `<div class="acts">${live&&s.status==="out"?`<a class="btn ghost nav" href="https://www.google.com/maps/dir/?api=1&destination=${q(s)}" target="_blank" rel="noopener">Navigate</a>`:""}
        <button class="got ${s.status==="Collected"?"on":""} ${pend&&pend.ref===s.ref&&pend.b==="Collected"?"sel":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>Collected</button>
-       <button class="xtr" data-xtr="${s.ref}" ${live&&s.status!=="Skipped"?"":"disabled"}>Collected + Extra</button>
-       <button class="miss ${s.status==="Missed"?"on":""} ${pend&&pend.ref===s.ref&&pend.b==="Missed"?"sel":""}" data-ref="${s.ref}" data-v="Missed" ${live?"":"disabled"}>Missed</button>
-       <button class="skp ${s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Skipped" ${live?"":"disabled"}>Skipped</button>${pend&&pend.ref===s.ref?`<div class="cfmrow"><button class="btn${pend.v==="Missed"?" bad":""}" data-cfm>Confirm: ${pend.v==="out"?"undo":pend.v==="Collected"?"Collected":"Missed"}</button><button class="btn ghost" data-cx>Cancel</button></div>`:""}</div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
+       <button class="miss ${s.status==="Missed"||s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Not" ${live?"":"disabled"}>Not collected</button>${pend&&pend.ref===s.ref?`<div class="cfmrow"><button class="btn${pend.v==="Missed"?" bad":""}" data-cfm>Confirm: ${pend.v==="out"?"undo":pend.v==="Collected"?"Collected":"Missed"}</button><button class="btn ghost" data-cx>Cancel</button></div>`:""}</div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
    </div>`).join("")}
    ${left?`<button class="done" disabled>Mark every stop to finish · ${left} to go</button>`
      :`<div class="endp"><h2>All stops marked</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}. What next?</div>
@@ -146,12 +144,26 @@ async function step(btn,label,rpc,args){ if(busy) return null; busy=true; btn.di
   const {data:res,error}=await sb.rpc(rpc,{p_token:token,...(args||{})}); busy=false;
   if(error){toast("Couldn't save. Check signal and tap again."); btn.disabled=false; btn.textContent=old; return null} return res||{} }
 async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run",{p_token:token}); if(error){toast("No signal? Retrying…");return} data=d; render() }
-function confirmAct(s,v,why,n){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
-  const t={Collected:"Confirm collected",Extra:"Confirm collected",Missed:"Confirm missed",Skipped:"Confirm skipped",out:"Undo this stop?"}[v]||"Confirm";
-  const line=v==="Collected"?`<b>${s.trees}</b> tree${s.trees===1?"":"s"} on board.`:v==="Extra"?`<b>${n}</b> trees on board (${b0} booked + ${n-b0} extra).`:v==="Missed"?"No tree out. You'll be asked for a photo next.":v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
+function confirmAct(s,v,why){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, cf=why==="Can't find address";
+  const t=v==="Collected"?"Confirm collected":v==="out"?"Undo this stop?":cf?"Can't find the address":"Confirm not collected";
+  const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. Any extra trees here?</div>
+   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="0" max="29" value="0"><button data-d="1" aria-label="One more">+</button></div>
+   <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?"The office will check the address and contact the customer.":"No tree out. You'll be asked for a photo next."):v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${t}</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="sub" style="font-size:1rem">${line}</div>
-   <button class="btn${v==="Missed"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
-  m.addEventListener("click",e=>{ if(e.target.closest("[data-ok]")){m.remove();return res(true)} if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
+   <button class="btn${v==="Missed"||v==="Skipped"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
+  const inp=m.querySelector("#tq"), tot=()=>{ if(!inp) return; const n=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+n}</b> tree${b0+n===1?"":"s"}`}; tot(); inp&&inp.addEventListener("input",tot);
+  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d&&inp){inp.value=Math.min(29,Math.max(0,(parseInt(inp.value,10)||0)+(+d.dataset.d)));tot();return}
+    if(e.target.closest("[data-ok]")){ let n=0; if(inp){n=parseInt(inp.value,10); if(!(n>=0&&n<=29)){inp.focus();return}} m.remove(); return res(v==="Collected"?{extra:n,total:b0+n}:true)}
+    if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
+function notWhy(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Why couldn't you collect it?</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div>
+   <button class="btn bad" data-w="nt">No tree out</button><button class="btn bad" data-w="cf">Can't find the address</button>
+   <button class="btn" data-w="Van full">Van full</button><button class="btn" data-w="Tree too big">Tree too big</button>
+   <div class="bar"><input id="why-other" type="text" maxlength="100" placeholder="Other reason"><button class="btn" data-w="Other" style="width:auto">Other</button></div>
+   <button class="btn ghost" data-w="">Cancel</button></div>`;
+  m.addEventListener("click",e=>{const x=e.target.closest("[data-w]"); if(!x) return; let w=x.dataset.w; m.remove();
+    if(!w) return res(null); if(w==="nt") return res({v:"Missed",why:null}); if(w==="cf") return res({v:"Missed",why:"Can't find address"});
+    if(w==="Other"){const t=m.querySelector("#why-other").value.trim(); w=t?"Other: "+t:"Other"} res({v:"Skipped",why:w}) }); document.body.appendChild(m)})}
 function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Collected + Extra</h2><div class="sub">${esc(s.name)}: booked ${b0} tree${b0===1?"":"s"}. How many extra trees are you taking?</div>
    <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="29" value="1"><button data-d="1" aria-label="One more">+</button></div>
@@ -210,15 +222,21 @@ document.addEventListener("click",async e=>{
   const cf=e.target.closest("button[data-cfm]");
   if(cf){ if(!pend||busy) return; const p=pend; pend=null; return save(p.ref,p.v,null,cf) }
   const b=e.target.closest("button[data-ref]"); if(!b||busy) return;
-  const s=data.stops.find(x=>String(x.ref)===b.dataset.ref); const v=s.status===b.dataset.v?"out":b.dataset.v;
-  let why=null; if(v==="Skipped"){ why=await skipWhy(s); if(!why) return }
-  if(!await confirmAct(s,v,why)) return; pend=null; save(s.ref,v,why,b) });
+  const s=data.stops.find(x=>String(x.ref)===b.dataset.ref); pend=null;
+  const isOn=b.dataset.v==="Collected"?s.status==="Collected":(s.status==="Missed"||s.status==="Skipped");
+  if(isOn){ if(!await confirmAct(s,"out")) return; return save(s.ref,"out",null,b) }
+  if(b.dataset.v==="Collected"){ const r=await confirmAct(s,"Collected"); if(!r) return; return r.extra>0?saveTrees(s,r.total,b):save(s.ref,"Collected",null,b) }
+  const nw=await notWhy(s); if(!nw) return; if(!await confirmAct(s,nw.v,nw.why)) return; save(s.ref,nw.v,nw.why,b) });
+async function saveTrees(s,n,b){ busy=true; b.disabled=true;
+  const {data:res,error}=await sb.rpc("driver_trees",{p_token:token,p_ref:s.ref,p_trees:n}); busy=false;
+  if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
+  s.booked=res.booked; s.trees=n; s.status="Collected"; render(); toast(`Collected ${n} tree${n===1?"":"s"}`); load() }
 async function save(ref,v,why,b){
   const s=data.stops.find(x=>x.ref===ref); busy=true; b.disabled=true;
   const {data:res,error}=await sb.rpc("driver_set",{p_token:token,p_ref:+ref,p_status:v,p_reason:why});
   busy=false; if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
-  s.status=v; s.skipReason=why; s.photo=false; if(why==="Tree too big") s.large=true; render(); toast(v==="out"?"Undone":v==="Collected"?"Marked collected":v==="Skipped"?"Skipped: back on the to-do list":"Marked missed");
-  if(v==="Missed"||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() } load() }
+  s.status=v; s.skipReason=why; s.photo=false; if(why==="Tree too big") s.large=true; render(); toast(v==="out"?"Undone":v==="Collected"?"Marked collected":v==="Skipped"?"Not collected: back on the to-do list":why==="Can't find address"?"Sent to the office to check":"Marked not collected");
+  if((v==="Missed"&&why!=="Can't find address")||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() } load() }
 window.addEventListener("hashchange",()=>{token=(location.hash||"").replace(/^#/,"").trim(); data=null; render(); load(); window.scrollTo(0,0)});
 load(); setInterval(load,30000); document.addEventListener("visibilitychange",()=>{if(!document.hidden) load()});
 </script></body></html>
