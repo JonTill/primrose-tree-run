@@ -175,8 +175,14 @@ function notWhy(s){return new Promise(res=>{const m=document.createElement("div"
    <button class="btn" data-w="Van full">Van full</button>
    <button class="btn ghost" data-w="">Cancel</button></div>`;
   m.addEventListener("click",e=>{const x=e.target.closest("[data-w]"); if(!x) return; let w=x.dataset.w; m.remove();
-    if(!w) return res(null); if(w==="nt") return res({v:"Missed",why:null}); if(w==="cf") return res({v:"Missed",why:"Can't find address"});
+    if(!w) return res(null); if(w==="nt") return res({v:"Missed",why:null}); if(w==="cf") return cfNote(s).then(n=>res(n===null?null:{v:"Missed",why:"Can't find address"+(n?": "+n:"")}));
     if(w==="Other"){const t=m.querySelector("#why-other").value.trim(); w=t?"Other: "+t:"Other"} res({v:"Skipped",why:w}) }); document.body.appendChild(m)})}
+function cfNote(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Can't find the address</h2><div class="sub">Add a note for the office if it helps. This is optional.</div>
+   <textarea id="cf-note" rows="3" autofocus maxlength="100" placeholder="e.g. No number 6, the road ends at 4" style="width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px"></textarea>
+   <div class="sub">You can add a photo next if you want.</div>
+   <button class="btn" data-c="1">Continue</button><button class="btn ghost" data-c="0">Cancel</button></div>`;
+  m.addEventListener("click",e=>{const x=e.target.closest("[data-c]"); if(!x) return; const t=m.querySelector("#cf-note").value.replace(/\s+/g," ").trim().slice(0,100); m.remove(); res(x.dataset.c==="1"?t:null)}); document.body.appendChild(m)})}
 function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Collected + Extra</h2><div class="sub">${esc(s.name)}: booked ${b0} tree${b0===1?"":"s"}. How many extra trees are you taking?</div>
    <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="29" value="1"><button data-d="1" aria-label="One more">+</button></div>
@@ -194,12 +200,12 @@ function skipWhy(s){return new Promise(res=>{const m=document.createElement("div
   m.addEventListener("click",e=>{const x=e.target.closest("[data-w]"); if(!x&&e.target!==m) return; let w=x?x.dataset.w:""; if(w==="Other"){const t=m.querySelector("#why-other").value.trim(); w=t?"Other: "+t:"Other"} m.remove(); res(w||null)}); document.body.appendChild(m)})}
 function shrink(file,max,q){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),i=new Image();i.onload=()=>{const k=Math.min(1,max/Math.max(i.naturalWidth,i.naturalHeight)),c=document.createElement("canvas");c.width=Math.round(i.naturalWidth*k);c.height=Math.round(i.naturalHeight*k);c.getContext("2d").drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(u);let out=c.toDataURL("image/jpeg",q);for(let qq=q-.1;out.length>650000&&qq>.2;qq-=.1) out=c.toDataURL("image/jpeg",qq);res(out)};i.onerror=()=>{URL.revokeObjectURL(u);rej(new Error("bad image"))};i.src=u})}
 function photoStep(s,kind){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
-  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${kind==="toobig"?"Take a photo of the tree":"Take a photo of the house"}</h2><div class="sub">${kind==="toobig"?"So the office can see how big it is.":"Front of the house or the drive, showing there's no tree out."}</div>
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${kind==="toobig"?"Take a photo of the tree":kind==="cf"?"Add a photo (optional)":"Take a photo of the house"}</h2><div class="sub">${kind==="toobig"?"So the office can see how big it is.":kind==="cf"?"Of the street or where you looked, so the office can see.":"Front of the house or the drive, showing there's no tree out."}</div>
    <label class="btn camlab">Take photo<input type="file" accept="image/*" capture="environment"></label><div class="sub" data-st hidden>Uploading photo…</div>
-   <button class="btn ghost" data-np>No photo</button></div>`;
+   <button class="btn ghost" data-np>${kind==="cf"?"Skip":"No photo"}</button></div>`;
   const fin=async img=>{ m.querySelectorAll("button,input").forEach(x=>x.disabled=true);
     let thumb=null; if(img){ m.querySelector("[data-st]").hidden=false; try{ thumb=await shrink(img,240,.6); img=await shrink(img,1280,.6) }catch(e){ toast("Couldn't read that photo. Try again."); m.querySelectorAll("button,input").forEach(x=>x.disabled=false); m.querySelector("[data-st]").hidden=true; return } }
-    const {data:r,error}=await sb.rpc("driver_photo",{p_token:token,p_ref:s.ref,p_kind:kind,p_img:img,p_thumb:thumb});
+    const {data:r,error}=await sb.rpc("driver_photo",{p_token:token,p_ref:s.ref,p_kind:kind==="cf"?"missed":kind,p_img:img,p_thumb:thumb});
     if(img&&(error||r?.error)){ toast(error?"Photo didn't send. Check signal. You can tap Add photo later.":"Couldn't save the photo."); m.remove(); return res(false) }
     m.remove(); if(img){ s.photo=true; toast("Photo added") } res(!!img) };
   m.querySelector("input").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0]; if(f) fin(f)});
@@ -250,7 +256,7 @@ async function save(ref,v,why,b){
   const {data:res,error}=await sb.rpc("driver_set",{p_token:token,p_ref:+ref,p_status:v,p_reason:why});
   busy=false; if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
   s.status=v; s.skipReason=why; s.photo=false; if(why==="Tree too big") s.large=true; render(); toast(v==="out"?"Undone":v==="Collected"?"Marked collected":v==="Skipped"?"Not collected: back on the to-do list":why==="Can't find address"?"Sent to the office to check":"Marked not collected");
-  if((v==="Missed"&&why!=="Can't find address")||why==="Tree too big"){ await photoStep(s,v==="Missed"?"missed":"toobig"); render() }
+  if(v==="Missed"||why==="Tree too big"){ await photoStep(s,v==="Missed"?(String(why||"").startsWith("Can't find")?"cf":"missed"):"toobig"); render() }
   if(why==="Van full"){ busy=true; const {data:r2,error:e2}=await sb.rpc("driver_vanfull",{p_token:token}); busy=false; if(e2||r2?.error) toast("Couldn't start the return. Tap Returning to unload when you're done."); else toast("Drive safely back to the depot"); window.scrollTo(0,0) }
   load() }
 window.addEventListener("hashchange",()=>{token=(location.hash||"").replace(/^#/,"").trim(); data=null; render(); load(); window.scrollTo(0,0)});
