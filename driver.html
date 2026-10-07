@@ -146,11 +146,17 @@ async function step(btn,label,rpc,args){ if(busy) return null; busy=true; btn.di
   const {data:res,error}=await sb.rpc(rpc,{p_token:token,...(args||{})}); busy=false;
   if(error){toast("Couldn't save. Check signal and tap again."); btn.disabled=false; btn.textContent=old; return null} return res||{} }
 async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run",{p_token:token}); if(error){toast("No signal? Retrying…");return} data=d; render() }
+function confirmAct(s,v,why,n){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
+  const t={Collected:"Confirm collected",Extra:"Confirm collected",Missed:"Confirm missed",Skipped:"Confirm skipped",out:"Undo this stop?"}[v]||"Confirm";
+  const line=v==="Collected"?`<b>${s.trees}</b> tree${s.trees===1?"":"s"} on board.`:v==="Extra"?`<b>${n}</b> trees on board (${b0} booked + ${n-b0} extra).`:v==="Missed"?"No tree out. You'll be asked for a photo next.":v==="Skipped"?`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`:"It goes back to not done.";
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${t}</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="sub" style="font-size:1rem">${line}</div>
+   <button class="btn${v==="Missed"?" bad":""}" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
+  m.addEventListener("click",e=>{ if(e.target.closest("[data-ok]")){m.remove();return res(true)} if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
 function treesAsk(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1;
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Collected + Extra</h2><div class="sub">${esc(s.name)}: booked ${b0} tree${b0===1?"":"s"}. How many extra trees are you taking?</div>
    <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="29" value="1"><button data-d="1" aria-label="One more">+</button></div>
    <div class="sub" id="tqt" style="text-align:center"></div>
-   <button class="btn" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
+   <button class="btn" data-ok>Next</button><button class="btn ghost" data-x>Cancel</button></div>`;
   const inp=m.querySelector("#tq"), tot=()=>{const v=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+v}</b>`}; tot(); inp.addEventListener("input",tot);
   m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d){inp.value=Math.min(29,Math.max(1,(parseInt(inp.value,10)||1)+(+d.dataset.d)));tot();return}
     if(e.target.closest("[data-ok]")){const v=parseInt(inp.value,10); if(!(v>=1&&v<=29)){inp.focus();return} m.remove(); return res(b0+v)}
@@ -196,7 +202,7 @@ document.addEventListener("click",async e=>{
   const ap=e.target.closest("button[data-addphoto]");
   if(ap){ const s=data.stops.find(x=>String(x.ref)===ap.dataset.addphoto); await photoStep(s,s.status==="Missed"?"missed":"toobig"); render(); load(); return }
   const xt=e.target.closest("button[data-xtr]");
-  if(xt){ if(busy) return; pend=null; const s=data.stops.find(x=>String(x.ref)===xt.dataset.xtr); const n=await treesAsk(s); if(!n) return; busy=true; xt.disabled=true;
+  if(xt){ if(busy) return; pend=null; const s=data.stops.find(x=>String(x.ref)===xt.dataset.xtr); const n=await treesAsk(s); if(!n) return; if(!await confirmAct(s,"Extra",null,n)) return; busy=true; xt.disabled=true;
     const {data:res,error}=await sb.rpc("driver_trees",{p_token:token,p_ref:s.ref,p_trees:n}); busy=false;
     if(error||res?.error){toast(error?"Couldn't save. Check signal and tap again.":res.error==="moved"?"Another team or the office has taken this stop.":res.error==="not_found"?"This run has been completed.":"Couldn't save.");await load();return}
     s.booked=res.booked; s.trees=n; s.status="Collected"; render(); toast(`Collected ${n} tree${n===1?"":"s"}`); load(); return }
@@ -205,8 +211,8 @@ document.addEventListener("click",async e=>{
   if(cf){ if(!pend||busy) return; const p=pend; pend=null; return save(p.ref,p.v,null,cf) }
   const b=e.target.closest("button[data-ref]"); if(!b||busy) return;
   const s=data.stops.find(x=>String(x.ref)===b.dataset.ref); const v=s.status===b.dataset.v?"out":b.dataset.v;
-  if(v==="Skipped"){ const why=await skipWhy(s); if(!why) return; pend=null; return save(s.ref,v,why,b) }
-  pend={ref:s.ref,v,b:b.dataset.v}; render() });
+  let why=null; if(v==="Skipped"){ why=await skipWhy(s); if(!why) return }
+  if(!await confirmAct(s,v,why)) return; pend=null; save(s.ref,v,why,b) });
 async function save(ref,v,why,b){
   const s=data.stops.find(x=>x.ref===ref); busy=true; b.disabled=true;
   const {data:res,error}=await sb.rpc("driver_set",{p_token:token,p_ref:+ref,p_status:v,p_reason:why});
