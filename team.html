@@ -109,6 +109,7 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--blue);outline-offse
 const cfg=window.TREERUN_CONFIG, sb=supabase.createClient(cfg.url,cfg.anonKey,{auth:{persistSession:false}});
 const DEPOT="19-21 Sherwood Road, Bromsgrove B60 3DR", DEPOT_LL={lat:52.31926,lon:-2.05864};
 const teamToken=(location.hash||"").replace(/^#/,"").trim();
+window.addEventListener("hashchange",()=>location.reload());
 const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const short=a=>String(a||"").replace(/, Worcestershire$/,"");
 let data=null, busy=false, token="", geoOK=false, lastPos=null, view="home", pend=null;
