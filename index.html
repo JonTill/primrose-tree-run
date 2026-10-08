@@ -172,12 +172,12 @@ const MAX_STOPS=30; // sanity cap per run
 const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
-const TABS=[["dispatch","Dispatch"],["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"]];
+const TABS=[["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"],["settings","Settings"]];
 
 let stops=new Map(), runs=new Map(), teams=new Map(), settings={};
 let db=null, mcp=null, dl=null, tried=false, canWrite=true, me=null, got={stops:false,runs:false,teams:false};
-let view={tab:"dispatch",run:null}, preview=null, busy=false;
-try{const s=JSON.parse(localStorage.getItem("treerun-v2")||"null"); if(s&&s.tab) view=s;}catch(e){}
+let view={tab:"runs",run:null}, preview=null, busy=false;
+try{const s=JSON.parse(localStorage.getItem("treerun-v2")||"null"); if(s&&s.tab) view=s; if(view.tab==="dispatch") view={...view,tab:"settings",ssub:"run"};}catch(e){}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const officeNo=()=>String(settings.officePhone||"").trim();
@@ -419,7 +419,7 @@ function render(){
   const main=$("#main");
   if(!got.stops){ main.innerHTML=`<div class="empty">${tried&&!db?"Collections appear here once the page connects. If this message stays, reopen the link while signed in to Claude.":"Loading collections…"}</div>`; return; }
   if(!stops.size){ main.innerHTML=`<div class="empty">No addresses loaded yet. Jon's collection list will appear here once it's loaded.</div>`; return; }
-  ({dispatch:renderDispatch,runs:renderRuns,map:renderMap,misses:renderMisses,addresses:renderAddresses,teams:renderTeams}[view.tab]||renderDispatch)(main);
+  ({runs:renderRuns,map:renderMap,misses:renderMisses,addresses:renderAddresses,teams:renderTeams,settings:renderSettings}[view.tab]||renderRuns)(main);
 }
 
 function renderDispatch(main){
@@ -478,7 +478,7 @@ function renderRuns(main){
   const sub=["live","ret","unl","done","off"].includes(view.sub)?view.sub:"live";
   const all=[...runs.values()], by=k=>all.filter(r=>runPhase(r)===k).sort((a,b)=>k==="done"||k==="off"?b.n-a.n:a.n-b.n);
   const g={live:by("live"),ret:by("ret"),unl:by("unl"),done:by("done"),off:by("off")}, list=g[sub];
-  const empty={live:"No runs on the road. Build one on the Dispatch tab.",ret:"No teams heading back to unload.",unl:"No teams unloading at the depot.",done:"No completed runs yet.",off:"No teams have logged off yet."};
+  const empty={live:"No teams on the road.",ret:"No teams heading back to unload.",unl:"No teams unloading at the depot.",done:"No completed runs yet.",off:"No teams have logged off yet."};
   main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${g.done.length})</button><button data-sub="off" aria-pressed="${sub==="off"}">Logged off (${g.off.length})</button></div>
   ${list.length?`<div class="list">${list.map(runRow).join("")}</div>`:`<div class="empty">${empty[sub]}</div>`}`;
 }
@@ -737,17 +737,22 @@ function editDrop(p){ return new Promise(async res=>{ try{ await loadPC() }catch
     else next=(settings.dropPoints||[]).map(x=>x.id===p.id?{...x,...upd}:x);
     b.disabled=true; const ok=await put("settings/main",{...settings,dropPoints:next}); b.disabled=false; if(ok) close(true) });
   document.body.appendChild(d); d.querySelector("#dp-name").focus() }) }
+function renderSettings(main){
+  const dis=canWrite?"":"disabled", sub=view.ssub==="run"?"run":"set";
+  const bar=`<div class="subtabs" role="tablist"><button data-ssub="set" aria-pressed="${sub==="set"}">Settings</button><button data-ssub="run" aria-pressed="${sub==="run"}">Send an office run</button></div>`;
+  if(sub==="run"){ renderDispatch(main); main.insertAdjacentHTML("afterbegin",bar+`<div class="hint" style="margin-bottom:8px">Most teams use their team link. Build a run here for a team with no smartphone or poor signal, Sunday mop-up, an authorised out-of-area pickup or a big vehicle on a dense estate.</div>`); return }
+  main.innerHTML=bar+`<div class="card"><h2>Office mobile</h2>
+   <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on messages, emails and run sheets</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
+  <div class="card" style="margin-top:10px"><h2>Driver options</h2>
+   <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as office runs and show <b>Driver asked</b> on the Teams Status tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
+  <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. Office-built runs still start and end at HQ.</div>
+   ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"?'<span class="chip done">Default</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this weekend</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"?"":`<button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
+   <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>`;
+}
 function renderTeams(main){
   const all=[...teams.values()].sort((a,b)=>(a.extra-b.extra)||a.name.localeCompare(b.name));
   const dis=canWrite?"":"disabled";
-  main.innerHTML=`<div class="card"><h2>Office mobile</h2>
-   <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on messages, emails and run sheets</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Driver options</h2>
-   <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as Dispatch and show <b>Driver asked</b> on the Teams Status tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. Office-built runs still start and end at HQ.</div>
-   ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"?'<span class="chip done">Default</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this weekend</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"?"":`<button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
-   <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Add a team</h2>
+  main.innerHTML=`<div class="card"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Trees per run</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
    </div>
@@ -867,6 +872,7 @@ document.addEventListener("click",async e=>{
   if(d.photoview){ viewPhoto(+d.photoview,d.pk); return }
   if(d.sub){view.sub=d.sub;save();render();return}
   if(d.asub){view.asub=d.asub;save();render();return}
+  if(d.ssub){view.ssub=d.ssub;save();render();return}
   if(d.tab){view={tab:d.tab,run:null,sub:"live"};save();render();window.scrollTo(0,0);return}
   if(d.run){view={tab:"runs",run:d.run,sub:view.sub};save();render();window.scrollTo(0,0);return}
   if("backlist" in d){view.run=null;save();render();return}
