@@ -26,7 +26,7 @@ h1{font:900 1.5rem/1.1 var(--display);color:var(--blue);margin:8px 0 2px}
 .body{flex:1;min-width:0}.name{font-weight:700}.addr{overflow-wrap:anywhere}.info{font-size:.9rem;color:var(--muted)}.info b{color:var(--fg)}
 .trees{font:900 1.5rem var(--display);text-align:right;line-height:1}.trees small{display:block;font:600 .65rem var(--body);color:var(--muted);text-transform:uppercase}
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.sel{outline:4px solid var(--blue);outline-offset:2px}.btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+.sel{outline:4px solid var(--blue);outline-offset:2px}.btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}.btn.badl{background:transparent;border:2px solid var(--bad);color:var(--bad)}
 .cfmrow{display:grid;grid-template-columns:2fr 1fr;gap:8px;grid-column:1/-1}.cfmrow .btn{font-size:1.05rem;padding:14px}
 .xtr{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--blue);background:var(--surface);color:var(--blue);cursor:pointer}
 .miss{font:800 1rem var(--body);padding:14px 6px;border-radius:12px;border:2px solid var(--bad);background:var(--surface);color:var(--bad);cursor:pointer}
@@ -170,8 +170,8 @@ function confirmAct(s,v,why){return new Promise(res=>{const m=document.createEle
     if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
 function notWhy(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Why couldn't you collect it?</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div>
-   <button class="btn bad" data-w="nt">No tree out</button><button class="btn bad" data-w="cf">Can't find the address</button><button class="btn bad" data-w="Tree too big">Tree too big</button>
-   <div class="bar"><input id="why-other" type="text" maxlength="100" placeholder="Other reason"><button class="btn bad" data-w="Other" style="width:auto">Other</button></div>
+   <button class="btn badl" data-w="nt">No tree out</button><button class="btn badl" data-w="cf">Can't find the address</button><button class="btn badl" data-w="Tree too big">Tree too big</button>
+   <div class="bar"><input id="why-other" type="text" maxlength="100" placeholder="Other reason"><button class="btn badl" data-w="Other" style="width:auto">Other</button></div>
    <button class="btn" data-w="Van full">Van full</button>
    <button class="btn ghost" data-w="">Cancel</button></div>`;
   m.addEventListener("click",e=>{const x=e.target.closest("[data-w]"); if(!x) return; let w=x.dataset.w; m.remove();
