@@ -113,6 +113,7 @@ footer img{height:26px;width:auto;background:var(--plate);border-radius:4px;padd
 .mbox{background:var(--surface);color:var(--fg);border-radius:14px;padding:18px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
 .mbox p{margin:0}
 .mbox > .field{flex:none}
+details.hq{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px}details.hq summary{font-weight:700;cursor:pointer}details.hq[open] summary{margin-bottom:6px}details.hq ol,details.hq ul{margin:6px 0 0;padding-left:20px}details.hq li{margin:3px 0}
 .subtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .subtabs button{flex:1 1 140px;font:700 .9rem var(--body);padding:9px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
 .subtabs button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:var(--blue-fg)}
@@ -172,7 +173,7 @@ const MAX_STOPS=30; // sanity cap per run
 const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
-const TABS=[["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"],["settings","Settings"]];
+const TABS=[["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"],["settings","Settings"],["help","Help"]];
 
 let stops=new Map(), runs=new Map(), teams=new Map(), settings={};
 let db=null, mcp=null, dl=null, tried=false, canWrite=true, me=null, got={stops:false,runs:false,teams:false};
@@ -415,7 +416,7 @@ function render(){
   const main=$("#main");
   if(!got.stops){ main.innerHTML=`<div class="empty">${tried&&!db?"Collections appear here once the page connects. If this message stays, reopen the link while signed in to Claude.":"Loading collections…"}</div>`; return; }
   if(!stops.size){ main.innerHTML=`<div class="empty">No addresses loaded yet. Jon's collection list will appear here once it's loaded.</div>`; return; }
-  ({runs:renderRuns,map:renderMap,misses:renderMisses,addresses:renderAddresses,teams:renderTeams,settings:renderSettings}[view.tab]||renderRuns)(main);
+  ({runs:renderRuns,map:renderMap,misses:renderMisses,addresses:renderAddresses,teams:renderTeams,settings:renderSettings,help:renderHelp}[view.tab]||renderRuns)(main);
 }
 
 function renderDispatch(main){
@@ -749,6 +750,38 @@ function renderSettings(main){
   <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. The main drop-off is used when a team's position isn't known. Office-built runs still start from the GTAccess depot.</div>
    ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"||p.id===mainDropId()?'<span class="chip done">Main drop-off</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this weekend</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"||p.id===mainDropId()?"":`<button class="btn ghost" data-maindrop="${esc(p.id)}" ${dis}>Make main</button><button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
    <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>`;
+}
+const HELP=[
+ ["Before the weekend",[
+  ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>WhatsApp</b> on each team row. The link works all weekend. Teams tap <b>Lets go get some Trees!</b> and get one collection at a time."],
+  ["Set the office mobile","Settings tab, <b>Office mobile</b>, Save. Drivers see it on their <b>Call office</b> button, messages and run sheets."],
+  ["Add or change a drop-off point","Settings tab, <b>Drop-off points</b>. <b>Add a drop-off point</b> needs a name, address and postcode. The main drop-off (Primrose HQ) is used when a team's position isn't known; tap <b>Make main</b> on another point to change it. <b>Switch off</b> a point that's shut or full."],
+  ["Add a team","Teams tab, <b>Add a team</b>. Name, trees per run, contact, phone and vehicle are needed. Tick <b>Can take large trees</b> for a van, trailer or Luton."]]],
+ ["During the weekend",[
+  ["See where every team is","<b>Teams Status</b>: On road, Returning to unload, Unloading, Completed and Logged off. <b>Map</b> shows teams on the road and the jobs they're holding."],
+  ["A team gave up or missed a step","Open the run on Teams Status. <b>Move this run on</b>: <b>Abandoned</b> puts unmarked stops back on the list for another team; or move it to Unloading, Completed or Logged off."],
+  ["Stop a team getting new jobs","Teams tab, <b>Pause Jobs</b> on the team. It turns red (<b>Resume Jobs</b>) until you tap it again."],
+  ["A team has no smartphone, or it's Sunday mop-up","Settings tab, <b>Send an office run</b>. Pick the team, <b>Build run</b>, then <b>Send run &amp; copy message</b>. Print the run sheet if they have no signal."],
+  ["Late booking or phone booking","Addresses tab, <b>Add a collection</b>. Tick Large tree if it needs a bigger vehicle."]]],
+ ["Missed trees and problems",[
+  ["A tree was missed","<b>Needs attention</b>: <b>Email customer</b>, send it, tap <b>I've sent it</b>. When they reply, tap <b>Customer replied</b>, then <b>Rebook</b>. Each address gets one rebook."],
+  ["Can't find address","The card shows the driver's note (and photo if taken). Phone the customer, <b>Edit address</b>, then <b>Authorise collection</b> to send a team back."],
+  ["Take an address off the collection","<b>Remove from collection</b> on its card. Add a note if you want; no email is sent. It moves to Closed."],
+  ["Bring a closed address back","In the Closed list, <b>Authorise collection</b> (with a note) puts it back on the to-do list as a 2nd visit. <b>Edit address</b> fixes typos."],
+  ["Address is out of area","Needs attention, Out of area: <b>Authorise collection</b> (up to 35 km), <b>Edit address</b> if it's a typo, or <b>Email</b> them about a refund."]]],
+ ["Troubleshooting",[
+  ["A team link shows the wrong team or old screen","Ask them to close the tab and open the link again. If it keeps happening, <b>Reset Link</b> on the Teams tab and send the new one."],
+  ["Team link stuck on Loading","Usually poor signal; the page shows <b>Try again</b>. Move to better signal."],
+  ["Team sent to a drop-off point that's shut","They tap another point under <b>Or unload at</b> on their phone. Switch the shut point off in Settings."],
+  ["Sign-in email hasn't arrived","Check junk for noreply@mail.app.supabase.io. Only a few sign-in emails go out per hour; wait and try again."],
+  ["Still stuck","Call Jon Till."]]]];
+function renderHelp(main,force){
+  if(!force&&$("#help-q")) return;
+  const q=($("#help-q")?.value||"").trim().toLowerCase(), plain=h=>h.replace(/<[^>]+>/g,"").toLowerCase();
+  const secs=HELP.map(([h,items])=>[h,items.filter(([t,b])=>!q||plain(t+" "+b).includes(q))]).filter(([,i])=>i.length);
+  main.innerHTML=`<div class="card"><h2>Help</h2><div class="hint">Quick answers for the office. Tap a question to open it.</div><div class="field" style="margin-top:8px"><input id="help-q" type="search" placeholder="Search help, e.g. missed, drop-off, link" value="${esc(q)}"></div></div>
+  ${secs.length?secs.map(([h,items])=>`<h3>${esc(h)}</h3>${items.map(([t,b])=>`<details class="hq"${q?" open":""}><summary>${esc(t)}</summary><div>${b}</div></details>`).join("")}`).join(""):`<div class="empty">Nothing matches. Try another word.</div>`}`;
+  const inp=$("#help-q"); inp.addEventListener("input",()=>{ const pos=inp.selectionStart; renderHelp(main,true); const n=$("#help-q"); n.focus(); n.setSelectionRange(pos,pos) },{once:true});
 }
 function renderTeams(main){
   const all=[...teams.values()].sort((a,b)=>(a.extra-b.extra)||a.name.localeCompare(b.name));
