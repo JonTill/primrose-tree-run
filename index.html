@@ -168,7 +168,6 @@ details.hq{background:var(--surface);border:1px solid var(--line);border-radius:
 const DEPOT={lat:52.31926,lon:-2.05864,addr:"19-21 Sherwood Road, Bromsgrove B60 3DR"};
 const EVENT_DAYS={fri:"2027-01-08",sat:"2027-01-09",sun:"2027-01-10"};
 const DAY_LABEL={fri:"Fri 8",sat:"Sat 9",sun:"Sun 10"};
-const LEG=9;        // Google Maps links take up to 9 stops, so longer runs are split into route parts
 const MAX_STOPS=30; // sanity cap per run
 const AREA_KM=16, AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
@@ -283,25 +282,7 @@ function buildRun(capacity,team){
   return ordered;
 }
 const runStops=r=>(r.refs||[]).map(ref=>stops.get(ref)).filter(Boolean);
-function legs(list){const out=[];for(let i=0;i<list.length;i+=LEG) out.push({from:i,list:list.slice(i,i+LEG)});return out}
-function legUrl(list,i,total){
-  const start=i===0?DEPOT.addr:null, prev=list.prev;
-  const pts=[i===0?DEPOT.addr:short(prev.address)+", "+prev.postcode,...list.map(s=>short(s.address)+", "+s.postcode)];
-  if(i===total-1) pts.push(mainDrop().full);
-  return "https://www.google.com/maps/dir/"+pts.map(encodeURIComponent).join("/");
-}
-function routeLinks(all){
-  const L=legs(all);
-  return L.map((l,i)=>{const lst=l.list.slice(); lst.prev=i?all[l.from-1]:null; return {label:L.length>1?`Route part ${i+1} of ${L.length} (stops ${l.from+1}–${l.from+l.list.length})`:"Route",url:legUrl(lst,i,L.length)}});
-}
 function areaOf(list){const c={};for(const s of list)c[s.area]=(c[s.area]||0)+1;return Object.entries(c).sort((a,b)=>b[1]-a[1]).map(e=>e[0]).slice(0,2).join(" / ")}
-function message(r,list){
-  const trees=list.reduce((a,s)=>a+s.trees,0);
-  const L=[`Primrose Hospice tree collection · Run ${r.n} · ${r.team}${whoRun(r)?" ("+whoRun(r)+")":""}`,`${list.length} stops, ${trees} trees. Start at the depot. Unload at ${mainDrop().name}, ${mainDrop().full}.`,"",...(driverLink(r)?[`Your run (tap Missed on any you can't collect): ${driverLink(r)}`,""]:[]),...routeLinks(list).map(x=>`${x.label}: ${x.url}`),""];
-  list.forEach((s,i)=>L.push(`${i+1}. ${s.name}, ${short(s.address)}, ${s.postcode}. ${s.trees} ${s.trees>1?"trees":"tree"}, ${s.where}.${s.rebooked?" SECOND VISIT.":""}${s.large?" LARGE TREE.":""}${s.phone?" Tel "+s.phone:" No phone."}`));
-  L.push("",`Text back the stop numbers you couldn't collect, e.g. "3 no tree out".${officeNo()?` Office: ${officeNo()}`:""}`);
-  return L.join("\n");
-}
 const DRIVER_URL=(window.TREERUN_CONFIG||{}).driverUrl||"";
 const MAILTO=(window.TREERUN_CONFIG||{}).emailMode==="mailto";   // emails open in the user's own email program instead of being sent by the page
 function htmlText(h){return String(h).replace(/<a [^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g,"$2: $1").replace(/<li>/g,"- ").replace(/<\/(p|h3|ul|ol)>/g,"\n\n").replace(/<\/(li|tr)>/g,"\n").replace(/<br\s*\/?>/g,"\n").replace(/<\/td>/g,"  ").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\n{3,}/g,"\n\n").trim()}
@@ -334,76 +315,21 @@ const driverLink=r=>DRIVER_URL&&r.token?`${DRIVER_URL}#${r.token}`:"";
 function nextRunNo(){let m=0;for(const r of runs.values()) m=Math.max(m,r.n||0);return m+1}
 
 
-/* ---------- printable run sheet (minimal PDF writer, no library) ---------- */
-function pdfText(t){return String(t??"").normalize("NFKD").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,"-").replace(/[^\x20-\x7E]/g,"").replace(/\\/g,"\\\\").replace(/\(/g,"\\(").replace(/\)/g,"\\)")}
-function wrap(t,max){const w=String(t||"").split(/\s+/);const out=[];let l="";for(const x of w){if((l+" "+x).trim().length>max){if(l)out.push(l);l=x}else l=(l+" "+x).trim()}if(l)out.push(l);return out.length?out:[""]}
-function makeRunPdf(r,list){
-  const W=595,H=842,M=36; const pages=[]; let ops=[], y=H-M;
-  const T=(x,yy,txt,size=10,bold=false)=>ops.push(`BT /${bold?"F2":"F1"} ${size} Tf ${x} ${yy} Td (${pdfText(txt)}) Tj ET`);
-  const R=(x,yy,w,h)=>ops.push(`${x} ${yy} ${w} ${h} re S`);
-  const Lh=(x1,yy,x2)=>ops.push(`${x1} ${yy} m ${x2} ${yy} l S`);
-  const header=(cont)=>{ T(M,y-14,"Primrose Hospice Christmas Tree Collection",15,true); T(W-M-150,y-14,"Charity No. 700272",9);
-    y-=32; T(M,y,`Run ${r.n} - ${r.team}${cont?" (continued)":""}`,13,true); y-=16;
-    if(!cont){ const t=teams.get(r.teamId)||{}; T(M,y,`Contact: ${t.contact||""}  ${t.phone||""}   Vehicle: ${t.vehicle||""}`,9); y-=13;
-      T(M,y,`${list.length} stops, ${r.trees} trees. Sent ${tm(r.sentAt)}. Start at the depot: ${DEPOT.addr}`,9); y-=13; T(M,y,`Unload at: ${mainDrop().name}, ${mainDrop().full}`,9); y-=13;
-      T(M,y,`Tick each stop. Text the office the stop numbers you couldn't collect.${officeNo()?"   Office: "+officeNo():""}`,9,true); y-=10; }
-    ops.push("0.6 w"); Lh(M,y,W-M); y-=14;
-    T(M,y,"#",9,true); T(M+22,y,"Name / address",9,true); T(M+300,y,"Trees",9,true); T(M+338,y,"Where",9,true); T(M+438,y,"Got it",9,true); T(M+480,y,"Missed",9,true); y-=8; Lh(M,y,W-M); y-=4; };
-  const newPage=()=>{pages.push(ops.join("\n")); ops=[]; y=H-M; header(true)};
-  header(false);
-  list.forEach((st,i)=>{
-    const addr=wrap(`${short(st.address)}, ${st.postcode}`,52), where=wrap(st.where,18);
-    const rows=Math.max(1+addr.length,where.length)+1, h=rows*12+8;
-    if(y-h<M+40) newPage();
-    const top=y-12;
-    T(M,top,String(i+1),11,true); T(M+22,top,st.name+(st.rebooked?"  (2nd visit)":"")+(st.large?"  (LARGE TREE)":""),10,true);
-    addr.forEach((a,k)=>T(M+22,top-12*(k+1),a,9));
-    T(M+22,top-12*(addr.length+1),(st.phone?"Tel "+st.phone:"No phone"),8);
-    T(M+305,top,String(st.trees),12,true); where.forEach((a,k)=>T(M+338,top-12*k,a,9));
-    R(M+444,top-4,14,14); R(M+488,top-4,14,14);
-    y-=h; ops.push("0.3 w"); Lh(M,y+2,W-M);
-  });
-  if(y<M+80) newPage();
-  if(officeNo()){ y-=22; T(M,y,`Office mobile: ${officeNo()}`,13,true); }
-  y-=18; T(M,y,"Notes:",9,true); for(let k=0;k<3;k++){y-=18; Lh(M+40,y,W-M)}
-  pages.push(ops.join("\n"));
-  // assemble
-  const objs=[]; const add=o=>{objs.push(o);return objs.length};
-  const f1=add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
-  const f2=add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
-  const kids=[];
-  const contentIds=pages.map(c=>add(`<< /Length ${c.length} >>\nstream\n${c}\nendstream`));
-  const parent=objs.length+pages.length+1;
-  contentIds.forEach(cid=>kids.push(add(`<< /Type /Page /Parent ${parent} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${cid} 0 R >>`)));
-  const pg=add(`<< /Type /Pages /Kids [${kids.map(k=>k+" 0 R").join(" ")}] /Count ${kids.length} >>`);
-  const cat=add(`<< /Type /Catalog /Pages ${pg} 0 R >>`);
-  let out="%PDF-1.4\n"; const offs=[];
-  objs.forEach((o,i)=>{offs.push(out.length); out+=`${i+1} 0 obj\n${o}\nendobj\n`});
-  const x=out.length; out+=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`+offs.map(o=>String(o).padStart(10,"0")+" 00000 n \n").join("");
-  out+=`trailer\n<< /Size ${objs.length+1} /Root ${cat} 0 R >>\nstartxref\n${x}\n%%EOF`;
-  return out;
-}
-async function saveRunSheet(r){
-  if(!dl){toast("Saving files isn't available in this view. Open the page in Claude.");return}
-  const data=makeRunPdf(r,runStops(r));
-  try{ await dl.save({filename:`Run ${r.n} - ${r.team.replace(/[^\w &-]/g,"")}.pdf`,data}); toast("Run sheet saved. Open it and print.") }
-  catch(e){ const c=e&&e.code; toast(c==="declined"?"Not saved":c==="rate_limited"?"A save is already open. Try again in a moment.":"Couldn't save the run sheet ("+(c||"error")+")") }
-}
-
-
 /* ---------- driver email ---------- */
-function runEmail(r,list){
-  const links=routeLinks(list).map(x=>`<li><a href="${esc(x.url)}">${esc(x.label)}</a></li>`).join("");
-  const rows=list.map((s,i)=>`<tr><td>${i+1}</td><td><b>${esc(s.name)}</b>${s.rebooked?" (2nd visit)":""}${s.large?" <b>LARGE TREE</b>":""}<br>${esc(short(s.address))}, ${esc(s.postcode)}<br>${s.phone?"Tel "+esc(s.phone):"No phone"}</td><td>${s.trees}</td><td>${esc(s.where)}</td><td></td></tr>`).join("");
-  return {subject:`Primrose Hospice tree collection – Run ${r.n} – ${r.team}`,
-   body:`<p>Hello ${esc((teams.get(r.teamId)||{}).contact||r.team)},</p><p><b>${esc(r.team)}</b>${whoRun(r)?" · "+esc(whoRun(r)):""}</p><p>Here is your run: ${list.length} stops, ${r.trees} trees. Start at the depot, ${esc(DEPOT.addr)}. Unload at ${esc(mainDrop().name)}, ${esc(mainDrop().full)}.</p>${driverLink(r)?`<p><a href="${esc(driverLink(r))}"><b>Open your run on your phone</b></a>: tap Missed on any stop you can't collect.</p>`:""}<h3>Route</h3><ul>${links}</ul><h3>Stops</h3><table border="1" cellpadding="4" cellspacing="0"><thead><tr><th>#</th><th>Name and address</th><th>Trees</th><th>Where</th><th>Missed?</th></tr></thead><tbody>${rows}</tbody></table><p>Please reply to this email, or text the office${officeNo()?` on <b>${esc(officeNo())}</b>`:""}, with the stop numbers you couldn't collect.</p><p>Thank you for helping Primrose Hospice.<br>Primrose Hospice Christmas Tree Collection · Registered Charity No. 700272</p>`};
+function linkEmail(r){
+  const t=teams.get(r.teamId)||{}, list=runStops(r), link=driverLink(r), off=officeNo();
+  const lines=[`Hello ${t.contact||r.team},`,"",`Here is your run for the Primrose Hospice Christmas tree collection: Run ${r.n}, ${list.length} stops, ${r.trees} trees.`,"","Open your run on your phone (keep this link handy):",link,"",`Start at the GTAccess depot, ${DEPOT.addr}. The app gives you each stop and, when you've finished, tells you where to unload.`,...(off?["",`Any problems, call the office on ${off}.`]:[]),"","Thank you for helping Primrose Hospice."];
+  return {subject:`Primrose Hospice tree collection - Run ${r.n} - your driver link`,text:lines.join("\n"),
+    body:lines.map(l=>l===link?`<p><a href="${esc(link)}"><b>Open your run</b></a><br>${esc(link)}</p>`:l?`<p>${esc(l)}</p>`:"").join("")};
 }
 async function emailRun(r){
   const t=teams.get(r.teamId)||{};
   if(!t.email){toast(`No email address for ${r.team}`);return false}
-  if(MAILTO){ if(!await openMail({to:[t.email],subject:runEmail(r,runStops(r)).subject,text:message(r,runStops(r))})) return false; await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); toast(MAIL_TOAST); return true }
+  if(!driverLink(r)){toast("This run has no driver link");return false}
+  const em=linkEmail(r);
+  if(MAILTO){ if(!await openMail({to:[t.email],subject:em.subject,text:em.text})) return false; await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); toast(MAIL_TOAST); return true }
   if(!mcp){toast("Emails need the Microsoft 365 connector. Open the page in Claude with it connected.");return false}
-  const {subject,body}=runEmail(r,runStops(r));
+  const {subject,body}=em;
   try{ await mcp.callTool(M365,"outlook_send_mail",{to:[t.email],subject,body,bodyType:"html"}); await patch("runs/"+r.id,{emailedAt:new Date().toISOString(),emailedTo:t.email}); return true }
   catch(e){ toast(mcpMsg(e)); return false }
 }
@@ -429,8 +355,8 @@ function renderDispatch(main){
     const list=preview.refs.map(r=>stops.get(r)).filter(Boolean), trees=list.reduce((a,s)=>a+s.trees,0);
     pv=list.length?`<div class="card"><div class="row" style="justify-content:space-between"><h2>Run ${nextRunNo()} · ${esc(areaOf(list))}</h2><span class="chip">${list.length} stops · ${trees}/${preview.capacity} trees</span></div>
       <ol class="list" style="padding-left:18px;margin:0">${list.map(s=>`<li>${esc(s.name)}, ${esc(short(s.address))} · ${s.trees} ${s.trees>1?"trees":"tree"}${s.rebooked?' <span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}</li>`).join("")}</ol>
-      <div class="row"><button class="btn bad" data-send ${canWrite?"":"disabled"}>Send run &amp; copy message</button><button class="btn ghost" data-rebuild>Rebuild</button><button class="btn ghost" data-cancelpv>Cancel</button></div>
-      <div class="hint">Sending marks these stops as on the road, emails the run to the team and copies the message. The run page then has <b>Copy driver link</b> to paste into a text.</div></div>`
+      <div class="row"><button class="btn bad" data-send ${canWrite?"":"disabled"}>Send run &amp; copy driver link</button><button class="btn ghost" data-rebuild>Rebuild</button><button class="btn ghost" data-cancelpv>Cancel</button></div>
+      <div class="hint">Sending marks these stops as on the road, emails the driver link to the team and copies the link so you can paste it into a text.</div></div>`
       :`<div class="empty">Nothing left that fits ${preview.capacity} trees.</div>`;
   }
   const bigWait=[...stops.values()].filter(s=>s.status===""&&s.large&&!outArea(s)).reduce((a,s)=>a+s.trees,0);
@@ -483,7 +409,7 @@ function renderRun(main,r){
   <h2 style="margin-top:10px">Run ${r.n} · ${esc(r.team)}</h2>
   <div style="font-weight:700">${esc(whoRun(r))}</div>
   <div class="sub">${esc(areaOf(list))} · ${list.length} stops · ${r.trees} trees · sent ${tm(r.sentAt)}</div>
-  <div class="row" style="margin-block:10px">${routeLinks(list).map(x=>`<a class="btn" href="${x.url}" target="_blank" rel="noopener">${routeLinks(list).length>1?esc(x.label.replace(/^Route part (\d+) of \d+.*$/,"Maps part $1")):"Open route in Maps"}</a>`).join("")}${driverLink(r)?`<button class="btn" data-copydl="${esc(r.id)}">Copy driver link</button>`:""}<button class="btn ghost" data-emailrun="${esc(r.id)}">${r.emailedAt?"Email again":"Email run"}</button><button class="btn ghost" data-print="${esc(r.id)}">Run sheet to print (PDF)</button>
+  <div class="row" style="margin-block:10px">${driverLink(r)?`<button class="btn" data-copydl="${esc(r.id)}">Copy driver link</button><button class="btn ghost" data-emailrun="${esc(r.id)}">${r.emailedAt?"Email link again":"Email link to driver"}</button>`:""}
    ${r.state==="out"?`<button class="btn blue" data-return="${esc(r.id)}" ${dis}>Complete run · ${open} collected, ${list.filter(s=>s.status==="Missed"&&s.run===r.id).length} missed</button>`:""}</div>
   ${driverLink(r)?`<div class="hint" style="margin-bottom:6px">Driver link: <a href="${esc(driverLink(r))}" target="_blank" rel="noopener">open the driver's view</a>. Tap <b>Copy driver link</b> and paste it into a text to the team. It's also in the email.</div>`:""}
   <div class="hint" style="margin-bottom:8px">${r.emailedAt?`Emailed to ${esc(r.emailedTo)} ${tm(r.emailedAt)}.`:"Not emailed yet."}</div>
@@ -494,7 +420,6 @@ function renderRun(main,r){
     const now=ph==="live"?"On the road":ph==="ret"?"Returning to unload":ph==="unl"?(r.unloadedAt?"Unloaded, driver choosing":"Unloading"):ph==="off"?"Logged off":"Completed";
     const btns=ph==="live"?B("abandon","Abandoned: put unmarked stops back",1):ph==="ret"?B("arrived","Move to Unloading")+B("unloaded","Move to Completed (unloaded)",1):ph==="unl"&&!r.unloadedAt?B("unloaded","Move to Completed (unloaded)")+B("off","Move to Logged off",1):ph!=="off"&&!r.nextRun?B("off","Move to Logged off",1):"";
     return btns?`<div class="card" style="margin-bottom:8px"><h3 style="margin:0 0 4px">Move this run on</h3><div class="hint" style="margin-bottom:6px">Now: <b>${now}</b>. Use these if the team stopped using the app or missed a step.</div><div class="steps">${btns}</div></div>`:"" })()}
-  <textarea class="msg" id="msg" readonly aria-label="Driver message" hidden>${esc(message(r,list))}</textarea>
   ${open&&r.state==="out"?`<div class="hint" style="margin-bottom:8px">Tap <b>Missed</b> on any stop the team couldn't collect. When they're back, tap <b>Complete run</b>: every stop not marked Missed is counted as collected.</div>`:""}
   <div class="list">${list.map((s,i)=>stopCard(s,i+1,r)).join("")}</div>`;
 }
@@ -708,7 +633,6 @@ async function renderMap(main){
 /* ---------- drop-off points ---------- */
 function dropList(){ const dp=(settings.dropPoints||[]).filter(p=>p.id!=="hq"); if(!dp.length) return [{id:"hq",name:"HQ depot",address:"19-21 Sherwood Road, Bromsgrove",postcode:"B60 3DR",lat:DEPOT.lat,lon:DEPOT.lon,active:true}]; const m=mainDropId(); return [...dp.filter(p=>p.id===m),...dp.filter(p=>p.id!==m)] }
 function mainDropId(){ const dp=(settings.dropPoints||[]).filter(p=>p.id!=="hq"); return dp.some(p=>p.id===settings.mainDrop)?settings.mainDrop:(dp[0]||{}).id }
-function mainDrop(){ const p=dropList()[0]||{}; return {name:p.name||"HQ depot",full:`${short(p.address||DEPOT.addr)}${p.postcode?", "+p.postcode:""}`} }
 function dpTag(r){ return r.dropPoint&&dropList().length>1?` → ${esc(r.dropPoint.name)}`:"" }
 function dropStats(){ const st={}, today=new Date().toDateString();
   for(const r of runs.values()){ if(!r.returningAt) continue; const id=r.dropPoint?.id||"hq"; const tr=[...stops.values()].reduce((a,s)=>a+(s.run===r.id&&s.status==="Collected"?s.trees:0),0);
@@ -743,7 +667,7 @@ function renderSettings(main){
   const bar=`<div class="subtabs" role="tablist"><button data-ssub="set" aria-pressed="${sub==="set"}">Settings</button><button data-ssub="run" aria-pressed="${sub==="run"}">Send an office run</button></div>`;
   if(sub==="run"){ renderDispatch(main); main.insertAdjacentHTML("afterbegin",bar+`<div class="hint" style="margin-bottom:8px">Most teams use their team link. Build a run here for a team with no smartphone or poor signal, Sunday mop-up, an authorised out-of-area pickup or a big vehicle on a dense estate.</div>`); return }
   main.innerHTML=bar+`<div class="card"><h2>Office mobile</h2>
-   <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on messages, emails and run sheets</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
+   <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on their phone and in emails</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Driver options</h2>
    <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as office runs and show <b>Driver asked</b> on the Teams Status tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. The main drop-off is used when a team's position isn't known. Office-built runs still start from the GTAccess depot.</div>
@@ -753,14 +677,14 @@ function renderSettings(main){
 const HELP=[
  ["Before the weekend",[
   ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>Copy Link</b> on each team row and send it to the contact by text or email. The link works all weekend. Teams tap <b>Lets go get some Trees!</b> and get one collection at a time."],
-  ["Set the office mobile","Settings tab, <b>Office mobile</b>, Save. Drivers see it on their <b>Call office</b> button, messages and run sheets."],
+  ["Set the office mobile","Settings tab, <b>Office mobile</b>, Save. Drivers see it on their <b>Call office</b> button and in emails."],
   ["Add or change a drop-off point","Settings tab, <b>Drop-off points</b>. <b>Add a drop-off point</b> needs a name, address and postcode. The main drop-off (Primrose HQ) is used when a team's position isn't known; tap <b>Make main</b> on another point to change it. <b>Switch off</b> a point that's shut or full."],
   ["Add a team","Teams tab, <b>Add a team</b>. Name, trees per run, contact, phone and vehicle are needed. Tick <b>Can take large trees</b> for a van, trailer or Luton."]]],
  ["During the weekend",[
   ["See where every team is","<b>Teams Status</b>: On road, Returning to unload, Unloading, Completed and Logged off. <b>Map</b> shows teams on the road and the jobs they're holding."],
   ["A team gave up or missed a step","Open the run on Teams Status. <b>Move this run on</b>: <b>Abandoned</b> puts unmarked stops back on the list for another team; or move it to Unloading, Completed or Logged off."],
   ["Stop a team getting new jobs","Teams tab, <b>Pause Jobs</b> on the team. It turns red (<b>Resume Jobs</b>) until you tap it again."],
-  ["A team has no smartphone, or it's Sunday mop-up","Settings tab, <b>Send an office run</b>. Pick the team, <b>Build run</b>, then <b>Send run &amp; copy message</b>. Print the run sheet if they have no signal."],
+  ["A team has no smartphone, or it's Sunday mop-up","Settings tab, <b>Send an office run</b>. Pick the team, <b>Build run</b>, then <b>Send run &amp; copy driver link</b>. Paste the link into a text; it is also emailed to the team."],
   ["Late booking or phone booking","Addresses tab, <b>Add a collection</b>. Tick Large tree if it needs a bigger vehicle."]]],
  ["Missed trees and problems",[
   ["A tree was missed","<b>Needs attention</b>: <b>Email customer</b>, send it, tap <b>I've sent it</b>. When they reply, tap <b>Customer replied</b>, then <b>Rebook</b>. Each address gets one rebook."],
@@ -938,14 +862,13 @@ async function act(b,d){
     if(!await put("runs/"+id,r)) return;
     for(const s of list) await patch("stops/"+sid(s.ref),{status:"out",run:id});
     runs.set(id,r); for(const s of list){const x=stops.get(s.ref); if(x){x.status="out";x.run=id}}
-    const ok=await copyText(message(r,list));
-    preview=null; toast(ok?`Run ${n} sent · message copied · emailing ${t.name}…`:`Run ${n} sent · emailing ${t.name}…`);
+    const ok=r.token?await copyText(driverLink(r)):false;
+    preview=null; toast(ok?`Run ${n} sent · driver link copied · emailing ${t.name}…`:`Run ${n} sent · emailing ${t.name}…`);
     view={tab:"runs",run:id}; save(); render(); window.scrollTo(0,0);
     if(!MAILTO) emailRun(r).then(em=>{ if(em) toast(`Run ${n} emailed to ${t.email}`) });
     return;
   }
-  if(d.emailrun){ const r=runs.get(d.emailrun); b.textContent="Sending…"; if(await emailRun(r)) toast(`Run ${r.n} emailed`); render(); return }
-  if(d.print){ await saveRunSheet(runs.get(d.print)); return }
+  if(d.emailrun){ const r=runs.get(d.emailrun); b.textContent="Sending…"; if(await emailRun(r)) toast(`Driver link emailed for run ${r.n}`); render(); return }
   if(d.copydl){const r=runs.get(d.copydl); const ok=await copyText(driverLink(r)); toast(ok?"Driver link copied":"Couldn't copy"); return}
   if(d.ref&&d.v){
     const s=stops.get(+d.ref); if(!s) return; const now=new Date().toISOString(); const r=runs.get(s.run);
