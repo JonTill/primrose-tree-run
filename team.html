@@ -215,7 +215,7 @@ function render(){
   if(ph==="returning"){ $("#sub").textContent=`Run ${r.n} · ${r.collectedTrees||0} trees on board`;
     const dp=dpOf(r);
     m.innerHTML=`<div class="endp"><h2>Heading back to unload</h2><div class="clbl">Drop-off point</div><div class="q1">${esc(dp.name)}</div><div class="ad1">${esc(dp.full)}</div>${dp.hours||dp.notes?`<div class="in1">${esc([dp.hours,dp.notes].filter(Boolean).join(" · "))}</div>`:""}
-      <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Route to ${esc(dp.name)}</a><button class="btn blue" data-st="driver_arrived">Arrived at ${esc(dp.name)}</button>${otherDrops(dp)}</div><div class="bar">${call}</div>`; return }
+      <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Navigate to Drop Off</a><button class="btn blue" data-st="driver_arrived">Arrived at ${esc(dp.name)}</button>${otherDrops(dp)}</div><div class="bar">${call}</div>`; return }
   if(ph==="unloading"){ $("#sub").textContent=`Run ${r.n}`;
     m.innerHTML=`<div class="endp"><h2>Unloading at ${esc(dpOf(r).name)}</h2><div class="sub">Unload your ${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} where you're shown. Tap the button once the van is empty.</div><button class="btn blue" data-st="driver_unloaded">Unloaded</button></div><div class="bar">${call}</div>`; return }
   if(ph==="choose"){ $("#sub").textContent=`Run ${r.n} done`;
