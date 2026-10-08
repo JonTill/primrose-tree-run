@@ -129,7 +129,7 @@ function endStage(r,got,missed,skipped,callBtn){
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>`; }
   const dp=dpOf(r);
   if(!r.unloadedAt&&!r.arrivedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}.</div><div class="clbl">Drop-off point</div><div class="q1">${esc(dp.name)}</div><div class="ad1">${esc(dp.full)}</div>${dp.hours||dp.notes?`<div class="in1">${esc([dp.hours,dp.notes].filter(Boolean).join(" · "))}</div>`:""}
-      <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Route to ${esc(dp.name)}</a><button class="btn blue" data-arrived>Arrived at ${esc(dp.name)}</button>${otherDrops(dp)}</div><div class="bar">${callBtn}</div>`;
+      <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Navigate to Drop Off</a><button class="btn blue" data-arrived>Arrived at ${esc(dp.name)}</button>${otherDrops(dp)}</div><div class="bar">${callBtn}</div>`;
   if(!r.unloadedAt) return `<div class="endp"><h2>Unloading at ${esc(dp.name)}</h2><div class="sub">Unload your ${got} tree${got===1?"":"s"} where you're shown. Tap the button once the van is empty.</div>
       <button class="btn blue" data-unloaded>Unloaded</button></div><div class="bar">${callBtn}</div>`;
   return `<div class="endp"><h2>Unloaded. Thank you!</h2><div class="sub">Run ${r.n} is done. Ready for more?</div>
