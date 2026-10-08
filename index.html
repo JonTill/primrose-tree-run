@@ -391,9 +391,7 @@ async function saveRunSheet(r){
 }
 
 
-/* ---------- driver email + WhatsApp ---------- */
-function intlPhone(p){let d=String(p||"").replace(/[^\d+]/g,""); if(d.startsWith("+")) d=d.slice(1); else if(d.startsWith("00")) d=d.slice(2); else if(d.startsWith("0")) d="44"+d.slice(1); return d.length>=10?d:""}
-function waUrl(r){const t=teams.get(r.teamId)||{}; const n=intlPhone(t.phone); const txt=encodeURIComponent(message(r,runStops(r))); return n?`https://wa.me/${n}?text=${txt}`:`https://wa.me/?text=${txt}`}
+/* ---------- driver email ---------- */
 function runEmail(r,list){
   const links=routeLinks(list).map(x=>`<li><a href="${esc(x.url)}">${esc(x.label)}</a></li>`).join("");
   const rows=list.map((s,i)=>`<tr><td>${i+1}</td><td><b>${esc(s.name)}</b>${s.rebooked?" (2nd visit)":""}${s.large?" <b>LARGE TREE</b>":""}<br>${esc(short(s.address))}, ${esc(s.postcode)}<br>${s.phone?"Tel "+esc(s.phone):"No phone"}</td><td>${s.trees}</td><td>${esc(s.where)}</td><td></td></tr>`).join("");
@@ -432,7 +430,7 @@ function renderDispatch(main){
     pv=list.length?`<div class="card"><div class="row" style="justify-content:space-between"><h2>Run ${nextRunNo()} · ${esc(areaOf(list))}</h2><span class="chip">${list.length} stops · ${trees}/${preview.capacity} trees</span></div>
       <ol class="list" style="padding-left:18px;margin:0">${list.map(s=>`<li>${esc(s.name)}, ${esc(short(s.address))} · ${s.trees} ${s.trees>1?"trees":"tree"}${s.rebooked?' <span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}</li>`).join("")}</ol>
       <div class="row"><button class="btn bad" data-send ${canWrite?"":"disabled"}>Send run &amp; copy message</button><button class="btn ghost" data-rebuild>Rebuild</button><button class="btn ghost" data-cancelpv>Cancel</button></div>
-      <div class="hint">Sending marks these stops as on the road, emails the run to the team and copies the message. The run page then has a WhatsApp button with the message ready to send.</div></div>`
+      <div class="hint">Sending marks these stops as on the road, emails the run to the team and copies the message. The run page then has <b>Copy driver link</b> to paste into a text.</div></div>`
       :`<div class="empty">Nothing left that fits ${preview.capacity} trees.</div>`;
   }
   const bigWait=[...stops.values()].filter(s=>s.status===""&&s.large&&!outArea(s)).reduce((a,s)=>a+s.trees,0);
@@ -485,10 +483,10 @@ function renderRun(main,r){
   <h2 style="margin-top:10px">Run ${r.n} · ${esc(r.team)}</h2>
   <div style="font-weight:700">${esc(whoRun(r))}</div>
   <div class="sub">${esc(areaOf(list))} · ${list.length} stops · ${r.trees} trees · sent ${tm(r.sentAt)}</div>
-  <div class="row" style="margin-block:10px">${routeLinks(list).map(x=>`<a class="btn" href="${x.url}" target="_blank" rel="noopener">${routeLinks(list).length>1?esc(x.label.replace(/^Route part (\d+) of \d+.*$/,"Maps part $1")):"Open route in Maps"}</a>`).join("")}<a class="btn" style="background:#25D366;border-color:#25D366;color:#0b1512" href="${waUrl(r)}" target="_blank" rel="noopener">WhatsApp to ${esc((teams.get(r.teamId)||{}).contact||"team")}</a><button class="btn ghost" data-copy="${esc(r.id)}">Copy driver message</button><button class="btn ghost" data-emailrun="${esc(r.id)}">${r.emailedAt?"Email again":"Email run"}</button><button class="btn ghost" data-print="${esc(r.id)}">Run sheet to print (PDF)</button>
+  <div class="row" style="margin-block:10px">${routeLinks(list).map(x=>`<a class="btn" href="${x.url}" target="_blank" rel="noopener">${routeLinks(list).length>1?esc(x.label.replace(/^Route part (\d+) of \d+.*$/,"Maps part $1")):"Open route in Maps"}</a>`).join("")}${driverLink(r)?`<button class="btn" data-copydl="${esc(r.id)}">Copy driver link</button>`:""}<button class="btn ghost" data-emailrun="${esc(r.id)}">${r.emailedAt?"Email again":"Email run"}</button><button class="btn ghost" data-print="${esc(r.id)}">Run sheet to print (PDF)</button>
    ${r.state==="out"?`<button class="btn blue" data-return="${esc(r.id)}" ${dis}>Complete run · ${open} collected, ${list.filter(s=>s.status==="Missed"&&s.run===r.id).length} missed</button>`:""}</div>
-  ${driverLink(r)?`<div class="hint" style="margin-bottom:6px">Driver link: <a href="${esc(driverLink(r))}" target="_blank" rel="noopener">open the driver's view</a>. It's in the WhatsApp message and email.</div>`:""}
-  <div class="hint" style="margin-bottom:8px">${r.emailedAt?`Emailed to ${esc(r.emailedTo)} ${tm(r.emailedAt)}.`:"Not emailed yet."} WhatsApp opens with the message ready: tap send.</div>
+  ${driverLink(r)?`<div class="hint" style="margin-bottom:6px">Driver link: <a href="${esc(driverLink(r))}" target="_blank" rel="noopener">open the driver's view</a>. Tap <b>Copy driver link</b> and paste it into a text to the team. It's also in the email.</div>`:""}
+  <div class="hint" style="margin-bottom:8px">${r.emailedAt?`Emailed to ${esc(r.emailedTo)} ${tm(r.emailedAt)}.`:"Not emailed yet."}</div>
   ${r.auto?`<div class="hint" style="margin-bottom:6px">The driver asked for this run from their phone after unloading${r.prevRun&&runs.get(r.prevRun)?` run ${runs.get(r.prevRun).n}`:""}. It's already on their screen.</div>`:""}
   ${(r.extras||[]).map(x=>`<div class="hint" style="margin-bottom:6px">Driver added ${(x.refs||[]).length} extra stop${(x.refs||[]).length===1?"":"s"} (${x.trees} tree${x.trees===1?"":"s"}) ${tm(x.at)}.</div>`).join("")}
   ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.returningAt&&`Returning to unload${r.dropPoint?" at "+esc(r.dropPoint.name):""} ${tm(r.returningAt)}`,r.arrivedAt&&`arrived to unload ${tm(r.arrivedAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`,r.abandonedAt&&`abandoned ${tm(r.abandonedAt)}${r.abandonNote?" ("+esc(r.abandonNote)+")":""}`,r.officeMovedAt&&`moved on by the office ${tm(r.officeMovedAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
@@ -664,9 +662,8 @@ function editStop(s){
 const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"driver.html").replace(/driver\.html$/,"team.html");
 const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
 const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,"");
-function teamWa(t){ const txt=`Hi ${t.contact||""}, here's the ${t.name} link for the Primrose Hospice Christmas tree collection. Keep it handy all weekend.\n\nWhen you're ready, tap Lets go get some Trees! It gives you one collection at a time and the next one appears when you mark it. When the van's full, tap Van full and it sends you to the nearest drop-off point.\n\n${teamLink(t)}`; const n=intlPhone(t.phone); return (n?`https://wa.me/${n}`:`https://wa.me/`)+`?text=${encodeURIComponent(txt)}` }
 function teamLinkCell(t,dis){ if(!t.teamToken) return `<button class="btn ghost tsm" data-mklink="${esc(t.id)}" ${dis}>Create link</button>`;
-  return `<div class="tbtns"><a class="btn tsm" style="background:#25D366;border-color:#25D366;color:#0b1512" href="${teamWa(t)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost tsm" data-cplink="${esc(t.id)}">Copy Link</button><button class="btn tsm ${t.paused?"":"ghost"}" data-pause="${esc(t.id)}" ${dis} ${t.paused?'style="background:var(--bad);border-color:var(--bad);color:#fff" title="Tap to resume jobs"':""}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>Reset Link</button></div>` }
+  return `<div class="tbtns"><button class="btn tsm" data-cplink="${esc(t.id)}">Copy Link</button><button class="btn tsm ${t.paused?"":"ghost"}" data-pause="${esc(t.id)}" ${dis} ${t.paused?'style="background:var(--bad);border-color:var(--bad);color:#fff" title="Tap to resume jobs"':""}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>Reset Link</button></div>` }
 
 /* ---------- map of teams ---------- */
 let MAP=null, mapEl=null, mapLayers=null, mapPos=[], mapPosAt=0, leafletLoading=null;
@@ -753,7 +750,7 @@ function renderSettings(main){
 }
 const HELP=[
  ["Before the weekend",[
-  ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>WhatsApp</b> on each team row. The link works all weekend. Teams tap <b>Lets go get some Trees!</b> and get one collection at a time."],
+  ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>Copy Link</b> on each team row and send it to the contact by text or email. The link works all weekend. Teams tap <b>Lets go get some Trees!</b> and get one collection at a time."],
   ["Set the office mobile","Settings tab, <b>Office mobile</b>, Save. Drivers see it on their <b>Call office</b> button, messages and run sheets."],
   ["Add or change a drop-off point","Settings tab, <b>Drop-off points</b>. <b>Add a drop-off point</b> needs a name, address and postcode. The main drop-off (Primrose HQ) is used when a team's position isn't known; tap <b>Make main</b> on another point to change it. <b>Switch off</b> a point that's shut or full."],
   ["Add a team","Teams tab, <b>Add a team</b>. Name, trees per run, contact, phone and vehicle are needed. Tick <b>Can take large trees</b> for a van, trailer or Luton."]]],
@@ -796,7 +793,7 @@ function renderTeams(main){
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Lets go get some Trees!</b> and get one collection at a time until the van is full. Send it once by WhatsApp. <b>Pause Jobs</b> stops a team getting new jobs; <b>Reset Link</b> makes a new link and stops the old one working.</div>
+  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Lets go get some Trees!</b> and get one collection at a time until the van is full. Tap <b>Copy Link</b> and send it to the team contact by text or email. <b>Pause Jobs</b> stops a team getting new jobs; <b>Reset Link</b> makes a new link and stops the old one working.</div>
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Per run</th><th>Agreed times</th><th>Done</th><th>Team link</th></tr></thead><tbody>
@@ -947,7 +944,7 @@ async function act(b,d){
   }
   if(d.emailrun){ const r=runs.get(d.emailrun); b.textContent="Sending…"; if(await emailRun(r)) toast(`Run ${r.n} emailed`); render(); return }
   if(d.print){ await saveRunSheet(runs.get(d.print)); return }
-  if(d.copy){const r=runs.get(d.copy); const ok=await copyText(message(r,runStops(r))); toast(ok?"Driver message copied":"Message selected: copy it now"); return}
+  if(d.copydl){const r=runs.get(d.copydl); const ok=await copyText(driverLink(r)); toast(ok?"Driver link copied":"Couldn't copy"); return}
   if(d.ref&&d.v){
     const s=stops.get(+d.ref); if(!s) return; const now=new Date().toISOString(); const r=runs.get(s.run);
     if(d.v==="Collected") await patch("stops/"+sid(s.ref), s.status==="Collected"?{status:"out"}:{status:"Collected",collectedAt:now,missedAt:null,attempts:s.status==="Missed"?s.attempts-1:s.attempts});
@@ -1001,7 +998,7 @@ async function act(b,d){
   if("rebookall" in d){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.replyAt&&s.attempts===1); for(const s of list) await rebook(s); toast(`${list.length} rebooked`); return }
   if(d.final){ const s=stops.get(+d.final); if(await sendEmail(s,"final")){ await patch("stops/"+sid(s.ref),{status:"Closed",finalEmailAt:new Date().toISOString()}); toast(`Final email sent to ${s.name}`) } return }
   if(d.mklink){ const t=teams.get(d.mklink); if(!t) return; if(d.renew&&!await confirmBox("Reset link?",`${t.name}'s old link will stop working. Send them the new one.`,"Reset Link")) return;
-    if(await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Send it by WhatsApp.`); return }
+    if(await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Tap Copy Link to send it.`); return }
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
   if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); if(ok) toast(`${t.name} link copied`); else if(ok===false) toast("Couldn't copy"); return }
   if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name}: jobs resumed`:`${t.name}: jobs paused`); return }
