@@ -679,22 +679,24 @@ function teamWhere(t,r){ const p=mapPos.find(x=>x.team_id===t.id); if(p&&Date.no
   const last=done.sort((a,b)=>new Date(b.collectedAt||b.missedAt||0)-new Date(a.collectedAt||a.missedAt||0))[0]; if(last) return {lat:last.lat,lon:last.lon,at:last.collectedAt||last.missedAt,how:"last job"};
   return null }
 function drawMap(){ if(!MAP||!window.L) return; mapLayers.clearLayers();
-  L.circleMarker([DEPOT.lat,DEPOT.lon],{radius:9,color:"#00587B",fillColor:"#ffde0e",fillOpacity:1,weight:3}).bindTooltip("Depot").addTo(mapLayers);
+  L.circleMarker([DEPOT.lat,DEPOT.lon],{radius:7,color:"#333",fillColor:"#fff",fillOpacity:1,weight:3}).bindTooltip("GTAccess depot (start)").addTo(mapLayers);
   for(let k=0;k<8;k++){ const a=k*Math.PI/4; L.polyline([[DEPOT.lat,DEPOT.lon],[DEPOT.lat+Math.cos(a)*16/111,DEPOT.lon+Math.sin(a)*16/(111.32*Math.cos(52.35*Math.PI/180))]],{color:"#888",weight:1,opacity:.35,dashArray:"4 6",interactive:false}).addTo(mapLayers) }
-  for(const p of dropList()){ if(p.id==="hq"||p.lat==null) continue; L.circleMarker([p.lat,p.lon],{radius:9,color:"#00587B",fillColor:p.active===false?"#cccccc":"#ffde0e",fillOpacity:1,weight:3}).bindTooltip(`Drop-off: ${esc(p.name)}${p.active===false?" (off)":""}`).addTo(mapLayers) }
+  const tt=s=>`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large?" · large":""}`;
   for(const s of stops.values()){ if(s.lat==null) continue;
-    if(s.status===""&&!outArea(s)) L.circleMarker([s.lat,s.lon],{radius:s.large?4:3,color:s.large?"#00587B":"#8a8f94",weight:1,fillOpacity:.6}).bindTooltip(`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large?" · large":""}`).addTo(mapLayers);
-    else if(s.status==="out"){ const r=runs.get(s.run); L.circleMarker([s.lat,s.lon],{radius:6,color:"#00905e",weight:2,fillColor:"#00905e",fillOpacity:.9}).bindTooltip(`${esc(r?r.team:"")}: ${esc(s.name)}`).addTo(mapLayers) } }
+    if(s.status==="Collected") L.circleMarker([s.lat,s.lon],{radius:3,color:"#1e8e3e",weight:1,fillColor:"#1e8e3e",fillOpacity:.8}).bindTooltip(`Collected: ${tt(s)}`).addTo(mapLayers);
+    else if((s.status===""&&!outArea(s))||s.status==="Missed") L.circleMarker([s.lat,s.lon],{radius:s.large?5:4,color:"#c62828",weight:s.large?2:1,fillColor:"#e53935",fillOpacity:.7}).bindTooltip(`${s.status==="Missed"?"Missed":"To collect"}: ${tt(s)}`).addTo(mapLayers);
+    else if(s.status==="out"){ const r=runs.get(s.run); L.circleMarker([s.lat,s.lon],{radius:7,color:"#7f0000",weight:3,fillColor:"#e53935",fillOpacity:1}).bindTooltip(`${esc(r?r.team:"")} on the way: ${tt(s)}`).addTo(mapLayers) } }
+  for(const p of dropList()){ if(p.lat==null) continue; L.circleMarker([p.lat,p.lon],{radius:11,color:"#fff",weight:3,fillColor:p.active===false?"#9aa5b1":"#1565c0",fillOpacity:1}).bindTooltip(`Drop-off: ${esc(p.name)}${p.active===false?" (switched off)":""}`).addTo(mapLayers) }
   for(const t of teams.values()){ const r=[...runs.values()].find(x=>x.teamId===t.id&&x.state==="out"); const lastRun=r||[...runs.values()].filter(x=>x.teamId===t.id).sort((a,b)=>new Date(b.sentAt)-new Date(a.sentAt))[0];
     const w=teamWhere(t,lastRun); if(!w) continue; if(!r&&Date.now()-new Date(w.at||0)>3*3600e3) continue;
     const fresh=w.at&&Date.now()-new Date(w.at)<15*60e3;
-    const icon=L.divIcon({className:"",html:`<div style="background:${r?"#00905e":"#00587B"};color:#fff;font:700 12px/1.2 system-ui,sans-serif;padding:3px 7px;border-radius:999px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);opacity:${fresh?1:.6};transform:translate(-50%,-50%);display:inline-block">${esc(t.name)}</div>`});
+    const icon=L.divIcon({className:"",html:`<div style="background:${r?"#1d2b36":"#6b7680"};color:#fff;font:700 12px/1.2 system-ui,sans-serif;padding:3px 7px;border-radius:999px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);opacity:${fresh?1:.6};transform:translate(-50%,-50%);display:inline-block">${esc(t.name)}</div>`});
     L.marker([w.lat,w.lon],{icon}).bindTooltip(`${esc(t.name)} · ${r?`run ${r.n}`:"not on a run"} · ${w.how==="phone"?"phone":"last job"} ${w.at?ago(w.at):""}`).addTo(mapLayers) }
 }
 async function renderMap(main){
   const live=[...runs.values()].filter(r=>r.state==="out").sort((a,b)=>a.n-b.n);
   main.innerHTML=`<div id="mapwrap" style="height:min(70vh,620px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--surface)"><div class="empty" id="mapload">Loading map…</div></div>
-   <div class="hint" style="margin:6px 0 10px">Green labels: teams on a run. Blue: teams back or between runs. Faded: not seen for 15 minutes. Green dots: jobs teams have now. Grey dots: waiting collections (blue = large tree). Positions come from team phones when they allow it, otherwise their last job, and refresh every 30 seconds.</div>
+   <div class="hint" style="margin:6px 0 10px"><b style="color:#1565c0">Blue</b>: drop-off points. <b style="color:#c62828">Red</b>: trees still to collect (bigger red with a dark ring = a team is on the way; thicker ring = large tree). <b style="color:#1e8e3e">Green</b>: trees collected. White dot: GTAccess depot. Dark labels: teams on a run; grey labels: teams back or between runs; faded: not seen for 15 minutes. Positions come from team phones when they allow it, otherwise their last job, and refresh every 30 seconds.</div>
    <h3>On the road (${live.length})</h3>${live.length?`<div class="list">${live.map(r=>{const t=teams.get(r.teamId)||{}; const w=teamWhere(t,r); const cur=(r.refs||[]).map(x=>stops.get(x)).find(s=>s&&s.run===r.id&&s.status==="out"); return `<div class="miss"><div class="top"><b>${esc(r.team)} · run ${r.n}</b>${phaseChip(r)}</div><div class="hint">${cur?`Now: ${esc(short(cur.address))}, ${esc(cur.postcode)}`:"No job right now"}${w?` · seen ${w.how==="phone"?"by phone":"at last job"} ${w.at?ago(w.at):""}`:""}</div></div>`}).join("")}</div>`:`<div class="empty">No teams on the road.</div>`}`;
   try{ await loadLeaflet() }catch(e){ const ml=document.getElementById("mapload"); if(ml) ml.textContent="Couldn't load the map. Check the internet connection."; return }
   if(!mapEl){ mapEl=document.createElement("div"); mapEl.style.cssText="width:100%;height:100%"; }
