@@ -169,7 +169,7 @@ const DEPOT={lat:52.31926,lon:-2.05864,addr:"19-21 Sherwood Road, Bromsgrove B60
 const EVENT_DAYS={fri:"2027-01-08",sat:"2027-01-09",sun:"2027-01-10"};
 const DAY_LABEL={fri:"Fri 8",sat:"Sat 9",sun:"Sun 10"};
 const MAX_STOPS=30; // sanity cap per run
-let AREA_KM=16; const AUTH_KM=35;   // collection area: 16 km (10 miles) from the Bromsgrove depot; anything further is out of area and never planned
+let AREA={core:8,link:3,max:20}; const AUTH_KM=35;   // collection area rule: always collect within core km of Bromsgrove; up to max km only if another booking is within link km (not isolated); beyond max never
 const BIG=15;       // teams carrying this many trees or more are steered to multi-tree stops
 const M365="Microsoft 365";
 const TABS=[["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"],["settings","Settings"],["help","Help"]];
@@ -189,8 +189,15 @@ const km=(a,b)=>Math.hypot((a.lat-b.lat)*111.0,(a.lon-b.lon)*111.32*Math.cos(52.
 const tm=iso=>iso?new Date(iso).toLocaleString("en-GB",{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
 
 /* ---------- tallies ---------- */
-const outArea=s=>s.status===""&&(s.lat==null||km(s,DEPOT)>(s.oaAuth?AUTH_KM:AREA_KM));
-const authFar=s=>s.oaAuth&&s.lat!=null&&km(s,DEPOT)>AREA_KM;
+let ISO=null;   // refs of addresses outside the collection rule; rebuilt on each render
+function areaOK(p,self){ const d=km(p,DEPOT); if(d<=AREA.core) return true; if(d>AREA.max) return false;
+  const dl=AREA.link/111, dn=AREA.link/(111.32*Math.cos(52.35*Math.PI/180));
+  for(const t of stops.values()){ if(t.lat==null||t.ref===self||Math.abs(t.lat-p.lat)>dl||Math.abs(t.lon-p.lon)>dn) continue; if(km(t,p)<=AREA.link) return true }
+  return false }
+function isoSet(){ if(ISO) return ISO; ISO=new Set(); for(const t of stops.values()) if(t.lat!=null&&!areaOK(t,t.ref)) ISO.add(t.ref); return ISO }
+const areaWhy=s=>{ const d=km(s,DEPOT); return d>AREA.max?`${Math.round(d)} km away`:`${Math.round(d)} km · nothing within ${AREA.link} km` };
+const outArea=s=>s.status===""&&(s.lat==null||(s.oaAuth?km(s,DEPOT)>AUTH_KM:isoSet().has(s.ref)));
+const authFar=s=>s.oaAuth&&s.lat!=null&&isoSet().has(s.ref);
 function treeTally(){
   const t={collected:0,outstanding:0,onRoad:0,missed:0,closed:0,total:0};
   for(const s of stops.values()){
@@ -337,7 +344,7 @@ async function emailRun(r){
 
 /* ---------- render ---------- */
 function render(){
-  renderTally(); renderTabs();
+  ISO=null; renderTally(); renderTabs();
   const main=$("#main");
   if(!got.stops){ main.innerHTML=`<div class="empty">${tried&&!db?"Collections appear here once the page connects. If this message stays, reopen the link while signed in to Claude.":"Loading collections…"}</div>`; return; }
   if(!stops.size){ main.innerHTML=`<div class="empty">No addresses loaded yet. Jon's collection list will appear here once it's loaded.</div>`; return; }
@@ -462,8 +469,8 @@ function renderMisses(main){
    ${MAILTO?"":`<button class="btn blue" data-checkreplies ${dis}>Check for replies</button>`}
    <button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>
    ${lastCheck?`<div class="hint">Last checked ${tm(lastCheck)}</div>`:""}</div>
-  ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are more than ${AREA_KM} km (${Math.round(AREA_KM/1.609)} miles) from Bromsgrove, so they're not planned. Up to ${AUTH_KM} km, the office can tap <b>Authorise collection</b> and it goes on the list. Otherwise email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
-  <div class="row" style="margin-bottom:8px"><button class="btn bad" data-oaemailall ${canWrite&&mcp&&oa.some(s=>!s.oaEmailAt&&s.email)?"":"disabled"}>Email ${oa.filter(s=>!s.oaEmailAt&&s.email).length} out-of-area customer${oa.filter(s=>!s.oaEmailAt&&s.email).length===1?"":"s"}</button></div><div class="list">${oa.map(s=>`<div class="miss" style="border-color:var(--bad)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip bad">${s.lat==null?"Postcode not found":Math.round(km(s,DEPOT))+" km away"}</span></div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")}</div>${s.oaEmailAt?`<div><span class="chip warn">Emailed ${tm(s.oaEmailAt)}: refund via office</span></div>`:""}<div class="steps">${s.oaEmailAt?"":`<button class="btn bad" data-oaemail="${s.ref}" ${canWrite&&mcp&&s.email?"":"disabled"}>Email customer</button>`}${s.lat!=null&&km(s,DEPOT)<=AUTH_KM?`<button class="btn" data-oaauth="${s.ref}" ${canWrite?"":"disabled"}>Authorise collection</button>`:`<span class="hint">Over ${AUTH_KM} km: can't be authorised</span>`}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-oaremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button></div></div>`).join("")}</div>`:""})()}
+  ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are isolated: more than ${AREA.core} km from Bromsgrove with no other booking within ${AREA.link} km, or more than ${AREA.max} km away. Each one costs a team about half an hour for one tree, so they're not planned. Up to ${AUTH_KM} km, the office can tap <b>Authorise collection</b> and it goes on the list. Otherwise email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
+  <div class="row" style="margin-bottom:8px"><button class="btn bad" data-oaemailall ${canWrite&&mcp&&oa.some(s=>!s.oaEmailAt&&s.email)?"":"disabled"}>Email ${oa.filter(s=>!s.oaEmailAt&&s.email).length} out-of-area customer${oa.filter(s=>!s.oaEmailAt&&s.email).length===1?"":"s"}</button></div><div class="list">${oa.map(s=>`<div class="miss" style="border-color:var(--bad)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip bad">${s.lat==null?"Postcode not found":areaWhy(s)}</span></div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")}</div>${s.oaEmailAt?`<div><span class="chip warn">Emailed ${tm(s.oaEmailAt)}: refund via office</span></div>`:""}<div class="steps">${s.oaEmailAt?"":`<button class="btn bad" data-oaemail="${s.ref}" ${canWrite&&mcp&&s.email?"":"disabled"}>Email customer</button>`}${s.lat!=null&&km(s,DEPOT)<=AUTH_KM?`<button class="btn" data-oaauth="${s.ref}" ${canWrite?"":"disabled"}>Authorise collection</button>`:`<span class="hint">Over ${AUTH_KM} km: can't be authorised</span>`}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-oaremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button></div></div>`).join("")}</div>`:""})()}
   <h3>Missed (${ms.length})</h3>
   ${ms.length?`<div class="list">${ms.map(missCard).join("")}</div>`:`<div class="empty">No missed trees.</div>`}
   ${closed.length?`<h3>Closed (${closed.length})</h3><div class="list">${closed.map(missCard).join("")}</div>`:""}`;
@@ -574,7 +581,7 @@ function editStop(s){
     const geoMsg=()=>{ const g=geocode($("#e-pc").value); const el=$("#e-geo");
       if(!normPC($("#e-pc").value)){ el.textContent=""; return null }
       if(!g){ el.innerHTML='<b style="color:var(--bad)">Postcode not recognised.</b> Check it. If saved as is, it goes on the Out of area list.'; return null }
-      const k=km(g,DEPOT); el.innerHTML=k>AREA_KM?`<b style="color:var(--bad)">${Math.round(k)} km from Bromsgrove: outside the ${AREA_KM} km area.</b> It won't be planned.`:`<span style="color:var(--ok);font-weight:700">${k.toFixed(1)} km from Bromsgrove, inside the area.</span>${g.how==="sector"?" Postcode found by area only, so the pin is approximate.":""}`; return g };
+      const k=km(g,DEPOT); el.innerHTML=!areaOK(g,s&&s.ref)?`<b style="color:var(--bad)">${k.toFixed(1)} km from Bromsgrove${k>AREA.max?"":` and no other booking within ${AREA.link} km`}: out of area.</b> It won't be planned unless the office authorises it.`:`<span style="color:var(--ok);font-weight:700">${k.toFixed(1)} km from Bromsgrove, inside the area.</span>${g.how==="sector"?" Postcode found by area only, so the pin is approximate.":""}`; return g };
     const close=v=>{d.remove();res(v)};
     d.addEventListener("input",e=>{ if(e.target.id==="e-pc") geoMsg() });
     d.addEventListener("click",async e=>{ e.stopPropagation(); const t=e.target.closest("[data-m]"); if(!t) return; if(t.dataset.m==="0") return close(false);
@@ -584,7 +591,7 @@ function editStop(s){
       const county=parts[2]||"Worcestershire";
       const data={name:name.slice(0,80),address:`${street}, ${town}, ${county}`.slice(0,160),area:town,postcode:pc,phone:$("#e-phone").value.trim().slice(0,30),email:$("#e-email").value.trim().slice(0,120),where:$("#e-where").value.trim().slice(0,60)||"Front garden",large:$("#e-large").checked,trees:Math.min(trees,20),lat:g?g.lat:null,lon:g?g.lon:null};
       let ok;
-      if(isNew){ const ref=Math.max(0,...[...stops.keys()])+1; ok=await put("stops/"+sid(ref),{ref,...data,status:"",run:null,attempts:0,rebooked:false,note:"",added:true,addedAt:new Date().toISOString(),addedBy:me}); if(ok) toast(`${name} added${g&&km(g,DEPOT)<=AREA_KM?" to the waiting list":" (out of area)"}`) }
+      if(isNew){ const ref=Math.max(0,...[...stops.keys()])+1; ok=await put("stops/"+sid(ref),{ref,...data,status:"",run:null,attempts:0,rebooked:false,note:"",added:true,addedAt:new Date().toISOString(),addedBy:me}); if(ok) toast(`${name} added${g&&areaOK(g,ref)?" to the waiting list":" (out of area)"}`) }
       else { ok=await patch("stops/"+sid(s.ref),{...data,editedAt:new Date().toISOString(),editedBy:me}); if(ok) toast(`${name} updated`) }
       if(ok) close(true); else { t.disabled=false; t.textContent=isNew?"Add collection":"Save" } });
     document.body.appendChild(d); geoMsg(); $("#e-name").focus();
@@ -612,13 +619,13 @@ function teamWhere(t,r){ const p=mapPos.find(x=>x.team_id===t.id); if(p&&Date.no
   const last=done.sort((a,b)=>new Date(b.collectedAt||b.missedAt||0)-new Date(a.collectedAt||a.missedAt||0))[0]; if(last) return {lat:last.lat,lon:last.lon,at:last.collectedAt||last.missedAt,how:"last job"};
   return null }
 function drawMap(){ if(!MAP||!window.L) return; mapLayers.clearLayers();
-  for(let k=0;k<8;k++){ const a=k*Math.PI/4; L.polyline([[DEPOT.lat,DEPOT.lon],[DEPOT.lat+Math.cos(a)*AREA_KM/111,DEPOT.lon+Math.sin(a)*AREA_KM/(111.32*Math.cos(52.35*Math.PI/180))]],{color:"#888",weight:1,opacity:.35,dashArray:"4 6",interactive:false}).addTo(mapLayers) }
-  L.circle([DEPOT.lat,DEPOT.lon],{radius:AREA_KM*1000,color:"#7b1fa2",weight:1.5,opacity:.6,fill:false,dashArray:"6 6",interactive:false}).addTo(mapLayers);
+  for(let k=0;k<8;k++){ const a=k*Math.PI/4; L.polyline([[DEPOT.lat,DEPOT.lon],[DEPOT.lat+Math.cos(a)*AREA.max/111,DEPOT.lon+Math.sin(a)*AREA.max/(111.32*Math.cos(52.35*Math.PI/180))]],{color:"#888",weight:1,opacity:.35,dashArray:"4 6",interactive:false}).addTo(mapLayers) }
+  for(const r of [AREA.core,AREA.max]) L.circle([DEPOT.lat,DEPOT.lon],{radius:r*1000,color:"#7b1fa2",weight:1.5,opacity:r===AREA.core?.6:.35,fill:false,dashArray:"6 6",interactive:false}).addTo(mapLayers);
   const tt=s=>`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large?" · large":""}`;
   for(const s of stops.values()){ if(s.lat==null) continue;
     if(s.status==="Collected") L.circleMarker([s.lat,s.lon],{radius:3,color:"#1e8e3e",weight:1,fillColor:"#1e8e3e",fillOpacity:.8}).bindTooltip(`Collected: ${tt(s)}`).addTo(mapLayers);
     else if((s.status===""&&!outArea(s))||s.status==="Missed") L.circleMarker([s.lat,s.lon],{radius:s.large?5:4,color:"#c62828",weight:s.large?2:1,fillColor:"#e53935",fillOpacity:.7}).bindTooltip(`${s.status==="Missed"?"Missed":"To collect"}: ${tt(s)}`).addTo(mapLayers);
-    else if(outArea(s)) L.circleMarker([s.lat,s.lon],{radius:6,color:"#4a148c",weight:2,fillColor:"#ab47bc",fillOpacity:.9}).bindTooltip(`Out of area (${Math.round(km(s,DEPOT))} km): ${tt(s)}`).addTo(mapLayers);
+    else if(outArea(s)) L.circleMarker([s.lat,s.lon],{radius:6,color:"#4a148c",weight:2,fillColor:"#ab47bc",fillOpacity:.9}).bindTooltip(`Out of area (${areaWhy(s)}): ${tt(s)}`).addTo(mapLayers);
     else if(s.status==="out"){ const r=runs.get(s.run); L.circleMarker([s.lat,s.lon],{radius:7,color:"#7f0000",weight:3,fillColor:"#e53935",fillOpacity:1}).bindTooltip(`${esc(r?r.team:"")} on the way: ${tt(s)}`).addTo(mapLayers) } }
   for(const p of dropList()){ if(p.lat==null) continue; L.circleMarker([p.lat,p.lon],{radius:11,color:"#fff",weight:3,fillColor:p.active===false?"#9aa5b1":"#1565c0",fillOpacity:1}).bindTooltip(`Drop-off: ${esc(p.name)}${p.active===false?" (switched off)":""}`).addTo(mapLayers) }
   for(const t of teams.values()){ const r=[...runs.values()].find(x=>x.teamId===t.id&&x.state==="out"); const lastRun=r||[...runs.values()].filter(x=>x.teamId===t.id).sort((a,b)=>new Date(b.sentAt)-new Date(a.sentAt))[0];
@@ -630,7 +637,7 @@ function drawMap(){ if(!MAP||!window.L) return; mapLayers.clearLayers();
 async function renderMap(main){
   const live=[...runs.values()].filter(r=>r.state==="out").sort((a,b)=>a.n-b.n);
   main.innerHTML=`<div id="mapwrap" style="height:min(70vh,620px);border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--surface)"><div class="empty" id="mapload">Loading map…</div></div>
-   <div class="hint" style="margin:6px 0 10px"><b style="color:#1565c0">Blue</b>: drop-off points. <b style="color:#c62828">Red</b>: trees still to collect (bigger red with a dark ring = a team is on the way; thicker ring = large tree). <b style="color:#1e8e3e">Green</b>: trees collected. <b style="color:#7b1fa2">Purple</b>: out of area (outside the dashed ${AREA_KM} km circle), not given to teams until the office authorises them on Needs attention. Dark labels: teams on a run; grey labels: teams back or between runs; faded: not seen for 15 minutes. Positions come from team phones when they allow it, otherwise their last job, and refresh every 30 seconds.</div>
+   <div class="hint" style="margin:6px 0 10px"><b style="color:#1565c0">Blue</b>: drop-off points. <b style="color:#c62828">Red</b>: trees still to collect (bigger red with a dark ring = a team is on the way; thicker ring = large tree). <b style="color:#1e8e3e">Green</b>: trees collected. <b style="color:#7b1fa2">Purple</b>: out of area, not given to teams until the office authorises them on Needs attention. Inside the inner dashed circle (${AREA.core} km) everything is collected; out to the outer circle (${AREA.max} km) an address is collected if another booking is within ${AREA.link} km. Dark labels: teams on a run; grey labels: teams back or between runs; faded: not seen for 15 minutes. Positions come from team phones when they allow it, otherwise their last job, and refresh every 30 seconds.</div>
    <h3>On the road (${live.length})</h3>${live.length?`<div class="list">${live.map(r=>{const t=teams.get(r.teamId)||{}; const w=teamWhere(t,r); const cur=(r.refs||[]).map(x=>stops.get(x)).find(s=>s&&s.run===r.id&&s.status==="out"); return `<div class="miss"><div class="top"><b>${esc(r.team)} · run ${r.n}</b>${phaseChip(r)}</div><div class="hint">${cur?`Now: ${esc(short(cur.address))}, ${esc(cur.postcode)}`:"No job right now"}${w?` · seen ${w.how==="phone"?"by phone":"at last job"} ${w.at?ago(w.at):""}`:""}</div></div>`}).join("")}</div>`:`<div class="empty">No teams on the road.</div>`}`;
   try{ await loadLeaflet() }catch(e){ const ml=document.getElementById("mapload"); if(ml) ml.textContent="Couldn't load the map. Check the internet connection."; return }
   if(!mapEl){ mapEl=document.createElement("div"); mapEl.style.cssText="width:100%;height:100%"; }
@@ -680,8 +687,12 @@ function renderSettings(main){
   main.innerHTML=bar+`<div class="card"><h2>Office mobile</h2>
    <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on their phone and in emails</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Collection area</h2>
-   <div class="row"><div class="field" style="flex:0 1 220px"><label for="area-km">Collect within this many km of Bromsgrove</label><input id="area-km" type="number" min="5" max="40" step="0.5" value="${AREA_KM}"></div><button class="btn" data-savearea ${dis}>Save</button></div>
-   <div class="hint">About ${Math.round(AREA_KM/1.609)} miles. Addresses further out go to <b>Needs attention › Out of area</b> and aren't given to teams unless the office taps <b>Authorise collection</b> (up to ${AUTH_KM} km).</div></div>
+   <div class="hint" style="margin-bottom:8px">An address costs a team time because it's far from the <b>next booking</b>, not because it's far from Bromsgrove. So: everything near Bromsgrove is collected; further out, an address is collected if another booking is close by; isolated ones go to <b>Needs attention › Out of area</b>, where the office can <b>Authorise collection</b> (up to ${AUTH_KM} km) or refund.</div>
+   <div class="row"><div class="field" style="flex:1 1 150px"><label for="area-core">Always collect within (km of Bromsgrove)</label><input id="area-core" type="number" min="2" max="30" step="0.5" value="${AREA.core}"></div>
+    <div class="field" style="flex:1 1 150px"><label for="area-link">Further out, collect if another booking is within (km)</label><input id="area-link" type="number" min="0.5" max="10" step="0.5" value="${AREA.link}"></div>
+    <div class="field" style="flex:1 1 150px"><label for="area-max">Never beyond (km of Bromsgrove)</label><input id="area-max" type="number" min="5" max="40" step="0.5" value="${AREA.max}"></div>
+    <button class="btn" data-savearea ${dis}>Save</button></div>
+   <div class="hint">Now: <b>${[...stops.values()].filter(outArea).length}</b> address${[...stops.values()].filter(outArea).length===1?"":"es"} out of area. About ${Math.round(AREA.core/1.609)}, ${Math.round(AREA.link/1.609*10)/10} and ${Math.round(AREA.max/1.609)} miles.</div></div>
   <div class="card" style="margin-top:10px"><h2>Office users</h2><div class="hint">People who can sign in to this page. They sign in with their email address and get a link by email. Jon Till's account can't be removed.</div>
    ${officeUsers===null?'<div class="hint" style="margin-top:8px">Loading…</div>':`<div class="list" style="margin-top:8px">${officeUsers.users.map(u=>`<div class="row" style="align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0"><span><b>${esc(u)}</b>${u===officeUsers.owner?' <span class="chip done">Owner</span>':""}${u===(me||"").toLowerCase()?' <span class="chip grey">You</span>':""}</span>${u===officeUsers.owner||u===(me||"").toLowerCase()?"":`<button class="btn ghost" data-rmuser="${esc(u)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div>`).join("")}</div>`}
    <div class="row" style="margin-top:8px"><div class="field" style="flex:1 1 220px"><label for="new-user">Add an office user</label><input id="new-user" type="email" placeholder="name@example.com" autocomplete="off"></div><button class="btn" data-adduser ${dis}>Add</button></div></div>
@@ -847,7 +858,7 @@ function emailBodies(s,kind){
   const ref=`PHTC-${s.ref}`;
   if(kind==="outarea") return {
     subject:`Your Christmas tree collection: outside our collection area [${ref}]`,
-    body:`<p>Hello ${esc(first)},</p><p>Thank you for booking a Christmas tree collection with Primrose Hospice. We only collect within ${AREA_KM} km (${Math.round(AREA_KM/1.609)} miles) of Bromsgrove, and the address we have for you, ${esc(short(s.address))}, ${esc(s.postcode)}, is outside that area, so we can't collect your tree.</p><p>Please contact the office${officeNo()?` on <b>${esc(officeNo())}</b>`:""} to arrange a refund.</p><p>If the address above is wrong, please reply to this email with the correct one and we'll check it again.</p><p>Thank you for supporting Primrose Hospice.</p><p>Primrose Hospice Christmas Tree Collection<br>Registered Charity No. 700272</p>`};
+    body:`<p>Hello ${esc(first)},</p><p>Thank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers collect in and around Bromsgrove and Redditch, and the address we have for you, ${esc(short(s.address))}, ${esc(s.postcode)}, is outside that area, so we can't collect your tree.</p><p>Please contact the office${officeNo()?` on <b>${esc(officeNo())}</b>`:""} to arrange a refund.</p><p>If the address above is wrong, please reply to this email with the correct one and we'll check it again.</p><p>Thank you for supporting Primrose Hospice.</p><p>Primrose Hospice Christmas Tree Collection<br>Registered Charity No. 700272</p>`};
   if(kind==="missed") return {
     subject:`Your Christmas tree collection: we couldn't find your tree [${ref}]`,
     body:`<p>Hello ${esc(first)},</p><p>Thank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers called at ${esc(short(s.address))}, ${esc(s.postcode)} but couldn't find your tree.</p><p>If your tree is now out and ready, please reply to this email to let us know. We'll arrange one more visit before the end of Sunday 10 January.</p><p>Please leave the tree somewhere our volunteers can see it from the road, for example at the front of the house or by the drive.</p><p>Thank you for supporting Primrose Hospice.</p><p>Primrose Hospice Christmas Tree Collection<br>Registered Charity No. 700272</p>`};
@@ -992,7 +1003,7 @@ async function act(b,d){
   }
   if("checkreplies" in d){ b.textContent="Checking…"; await checkReplies(); return }
   if(d.oaemail){ const s=stops.get(+d.oaemail); if(await sendEmail(s,"outarea")){ await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
-  if("oaemailall" in d&&MAILTO){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email).slice(0,40); if(!list.length) return; if(!await openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: outside our collection area",text:`Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. We only collect within ${AREA_KM} km (${Math.round(AREA_KM/1.609)} miles) of Bromsgrove, and the address you gave us is outside that area, so we can't collect your tree.\n\nPlease contact the office${officeNo()?" on "+officeNo():""} to arrange a refund.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272`})) return; const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{oaEmailAt:now}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
+  if("oaemailall" in d&&MAILTO){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email).slice(0,40); if(!list.length) return; if(!await openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: outside our collection area",text:`Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers collect in and around Bromsgrove and Redditch, and the address you gave us is outside our collection area, so we can't collect your tree.\n\nPlease contact the office${officeNo()?" on "+officeNo():""} to arrange a refund.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice Christmas Tree Collection\nRegistered Charity No. 700272`})) return; const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{oaEmailAt:now}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
   if("oaemailall" in d){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email); let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"outarea")) break; await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) } toast(`${n} email${n===1?"":"s"} sent`); render(); return }
   if(d.edit){ await editStop(stops.get(+d.edit)); return }
   if("addstop" in d){ await editStop(null); return }
@@ -1020,7 +1031,7 @@ async function act(b,d){
     const {data,error}=await window.treerunSupabase.rpc("office_users_remove",{p_email:d.rmuser}); if(error||!data?.ok){ toast(data?.error==="owner"?"Jon Till's account can't be removed":data?.error==="self"?"You can't remove yourself":"Couldn't remove that user"); return } toast(`${d.rmuser} removed`); await loadOfficeUsers(true); return }
   if("saveplan" in d){ const p={}; document.querySelectorAll("input.pf").forEach(i=>{ const v=parseFloat(i.value); if(!isNaN(v)&&v>=0) p[i.dataset.pk]=v }); if(await put("settings/main",{...settings,plan:p})){ document.querySelectorAll("input.pf").forEach(i=>delete i.dataset.dirty); toast("Plan saved") } return }
   if("planreset" in d){ if(!await confirmBox("Put the plan back to the defaults?","This-year and past-year figures are kept.","Reset")) return; const {plan,...rest}=settings; if(await put("settings/main",rest)) toast("Plan back to defaults"); return }
-  if("savearea" in d){ const v=parseFloat($("#area-km").value); if(!(v>=5&&v<=40)){ toast("Enter a distance between 5 and 40 km"); return } if(await put("settings/main",{...settings,areaKm:v})) toast(`Collection area set to ${v} km`); return }
+  if("savearea" in d){ const c=parseFloat($("#area-core").value), l=parseFloat($("#area-link").value), m=parseFloat($("#area-max").value); if(!(c>=2&&c<=30&&l>=0.5&&l<=10&&m>=5&&m<=40&&m>=c)){ toast("Check the figures: always-collect 2 to 30 km, nearby booking 0.5 to 10 km, never beyond 5 to 40 km and not less than always-collect"); return } if(await put("settings/main",{...settings,areaCore:c,areaLink:l,areaMax:m})) toast(`Collection area saved: ${c} km, then ${l} km to the next booking, up to ${m} km`); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
   if("addteam" in d){
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
@@ -1047,12 +1058,12 @@ render();
   if(u){ try{me=await u.id()}catch(e){} try{const c=await u.can("data.write"); if(c===false){canWrite=false;$("#ro").hidden=false}}catch(e){} }
   if(!db){render();return}
   const keep=()=>{const ae=document.activeElement; return ae&&ae.id&&ae.tagName!=="BUTTON"?{id:ae.id,val:ae.value}:null};
-  const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-km"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
+  const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-core","area-link","area-max"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
     render(); for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id); if(el&&id!=="team-sel") el.value=v; else if(el&&teams.has(v)) el.value=v}
     if(k){const el=document.getElementById(k.id); if(el) el.focus()}};
   db.collection("stops").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; redraw()},()=>toast("Live updates stopped. Reload the page."));
   db.collection("runs").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} runs=mp; got.runs=true; redraw()},()=>{});
-  db.doc("settings/main").onSnapshot(snap=>{settings=snap.exists?{...snap.data()}:{}; AREA_KM=+settings.areaKm||16; redraw()},()=>{});
+  db.doc("settings/main").onSnapshot(snap=>{settings=snap.exists?{...snap.data()}:{}; AREA={core:+settings.areaCore||8,link:+settings.areaLink||3,max:+settings.areaMax||20}; ISO=null; redraw()},()=>{});
   db.collection("teams").limit(500).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} teams=mp; got.teams=true; redraw()},()=>{});
 })();
 </script>
