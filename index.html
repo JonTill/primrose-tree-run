@@ -694,26 +694,32 @@ function planActuals(){
   const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null, mins=(a,b)=>(new Date(b)-new Date(a))/60000;
   const ev=Object.values(EVENT_DAYS), all=[...stops.values()], rs=[...runs.values()].filter(r=>r.sentAt&&ev.includes(new Date(r.sentAt).toLocaleDateString("en-CA")));
   const byRun={}; for(const s of all) if(s.run&&s.status==="Collected") (byRun[s.run]=byRun[s.run]||[]).push(s);
-  const between=[], perLoad=[], back=[], unload=[]; const day={};
+  const between=[], perLoad=[], back=[], unload=[]; const day={}, per={};
+  const T=r=>{const id=r.teamId||r.team; return per[id]||(per[id]={name:(teams.get(r.teamId)||{}).name||r.team||id,loads:0,trees:0,gaps:[],unl:[],hrs:0,days:0,miss:0})};
   for(const r of rs){ const c=(byRun[r.id]||[]).filter(s=>s.collectedAt).map(s=>new Date(s.collectedAt)).sort((a,b)=>a-b);
-    for(let i=1;i<c.length;i++){ const m=(c[i]-c[i-1])/60000; if(m>0&&m<60) between.push(m) }
-    if(r.unloadedAt||r.arrivedAt){ const t=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0); if(t) perLoad.push(t) }
+    for(let i=1;i<c.length;i++){ const m=(c[i]-c[i-1])/60000; if(m>0&&m<60){ between.push(m); T(r).gaps.push(m) } }
+    if(r.unloadedAt||r.arrivedAt){ const t=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0); if(t){ perLoad.push(t); T(r).loads++ } }
+    T(r).trees+=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0);
     if(r.returningAt&&r.arrivedAt){ const m=mins(r.returningAt,r.arrivedAt); if(m>0&&m<120) back.push(m) }
-    if(r.arrivedAt&&r.unloadedAt){ const m=mins(r.arrivedAt,r.unloadedAt); if(m>0&&m<180) unload.push(m) }
+    if(r.arrivedAt&&r.unloadedAt){ const m=mins(r.arrivedAt,r.unloadedAt); if(m>0&&m<180){ unload.push(m); T(r).unl.push(m) } }
     const k=(r.teamId||r.team)+"|"+new Date(r.sentAt).toDateString(), end=[r.unloadedAt,r.doneAt,r.arrivedAt,...c.map(x=>x.toISOString())].filter(Boolean).map(x=>new Date(x)).sort((a,b)=>b-a)[0]||new Date(r.sentAt);
-    const o=day[k]||(day[k]={a:new Date(r.sentAt),b:end,trees:0}); if(new Date(r.sentAt)<o.a) o.a=new Date(r.sentAt); if(end>o.b) o.b=end; o.trees+=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0) }
-  const td=Object.values(day).filter(o=>o.b>o.a), hrs=td.map(o=>(o.b-o.a)/3600000), th=hrs.reduce((a,b)=>a+b,0), tt=td.reduce((a,o)=>a+o.trees,0);
+    const o=day[k]||(day[k]={a:new Date(r.sentAt),b:end,trees:0,tid:r.teamId||r.team}); if(new Date(r.sentAt)<o.a) o.a=new Date(r.sentAt); if(end>o.b) o.b=end; o.trees+=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0) }
+  for(const s of all) if(s.attempts&&s.missRun!=null){ const r=rs.find(x=>x.n===s.missRun); if(r) T(r).miss+=s.attempts }
+  const td=Object.values(day).filter(o=>o.b>o.a); for(const o of td){ const p=per[o.tid]; if(p){ p.hrs+=(o.b-o.a)/3600000; p.days++ } }
+  const hrs=td.map(o=>(o.b-o.a)/3600000), th=hrs.reduce((a,b)=>a+b,0), tt=td.reduce((a,o)=>a+o.trees,0);
   const coll=all.filter(s=>s.status==="Collected").length, misses=all.reduce((a,s)=>a+(s.attempts||0),0), reb=all.filter(s=>s.rebooked===true).length;
   const teamsUsed=new Set(rs.map(r=>r.teamId||r.team)).size, daysUsed=new Set(rs.map(r=>new Date(r.sentAt).toDateString())).size;
   const out={teams:[teamsUsed||null,teamsUsed],days:[daysUsed||null,daysUsed],hours:[avg(hrs),hrs.length],between:[avg(between),between.length],perLoad:[avg(perLoad),perLoad.length],back:[avg(back),back.length],unload:[avg(unload),unload.length],
     missRate:[coll+misses?100*misses/(coll+misses):null,coll+misses],rebook:[misses?100*reb/misses:null,misses],rate:[th?tt/th:null,td.length]};
   const yr=rs.length?Math.max(...rs.map(r=>new Date(r.sentAt).getFullYear())):null;
-  return {out,yr,booked:all.filter(s=>s.status!=="Closed").reduce((a,s)=>a+(s.trees||1),0),collected:all.reduce((a,s)=>a+(s.status==="Collected"?s.trees:0),0)} }
+  const r1=v=>v==null?null:Math.round(v*10)/10;
+  const teamRows=Object.entries(per).map(([id,p])=>({id,name:p.name,days:p.days,hrs:r1(p.hrs),loads:p.loads,trees:p.trees,rate:p.hrs?r1(p.trees/p.hrs):null,between:r1(avg(p.gaps)),perLoad:p.loads?r1(p.trees/p.loads):null,unload:r1(avg(p.unl)),miss:p.miss})).sort((a,b)=>(b.rate||0)-(a.rate||0));
+  return {out,yr,teamRows,booked:all.filter(s=>s.status!=="Closed").reduce((a,s)=>a+(s.trees||1),0),collected:all.reduce((a,s)=>a+(s.status==="Collected"?s.trees:0),0)} }
 let planSavedAt=0;
 function planAutosave(A){ if(!canWrite||!A.yr||Date.now()-planSavedAt<600000) return; const snap={}; for(const [k,[v,n]] of Object.entries(A.out)) if(v!=null) snap[k]={v:Math.round(v*10)/10,n};
-  if(!Object.keys(snap).length) return; const h=settings.planHistory||{}, prev=JSON.stringify((h[A.yr]||{}).figs||{});
-  planSavedAt=Date.now(); if(prev===JSON.stringify(snap)) return;
-  put("settings/main",{...settings,planHistory:{...h,[A.yr]:{figs:snap,trees:A.collected,booked:A.booked,savedAt:new Date().toISOString()}}}) }
+  if(!Object.keys(snap).length) return; const h=settings.planHistory||{}, prev=JSON.stringify([(h[A.yr]||{}).figs||{},(h[A.yr]||{}).teams||[]]);
+  planSavedAt=Date.now(); if(prev===JSON.stringify([snap,A.teamRows])) return;
+  put("settings/main",{...settings,planHistory:{...h,[A.yr]:{figs:snap,teams:A.teamRows,trees:A.collected,booked:A.booked,savedAt:new Date().toISOString()}}}) }
 function renderPlan(main,bar){
   const dirty={}; document.querySelectorAll("input.pf[data-dirty]").forEach(i=>dirty[i.dataset.pk]=i.value);
   const dis=canWrite?"":"disabled", A=planActuals(), H=settings.planHistory||{}, yrs=Object.keys(H).sort().slice(-3), f1=v=>v==null?"–":(Math.round(v*10)/10).toString();
@@ -724,6 +730,8 @@ function renderPlan(main,bar){
    <div class="tw" style="margin-top:10px"><table><thead><tr><th>Figure</th><th>Plan</th><th>This year</th>${yrs.map(y=>`<th>${esc(y)}</th>`).join("")}</tr></thead><tbody>
    ${PLAN_ROWS.map(([k,l,def,u,act])=>{const a=act?A.out[act]:null; return `<tr><td>${esc(l)}</td><td style="white-space:nowrap"><input class="pf" id="pf-${k}" data-pk="${k}" ${k in dirty?"data-dirty":""} type="number" step="any" min="0" value="${esc(String(k in dirty?dirty[k]:planVal(k)))}" aria-label="${esc(l)}, plan" style="width:5.5em" ${dis}> ${u}</td><td>${act?(a&&a[0]!=null?`<b>${f1(a[0])}</b> <span class="hint">(${a[1]})</span>`:"–"):'<span class="hint">not measured</span>'}</td>${yrs.map(y=>{const v=((H[y]||{}).figs||{})[k]; return `<td>${v?f1(v.v):"–"}</td>`}).join("")}</tr>`}).join("")}
    </tbody></table></div>
+   <h3>Each team this year</h3>${A.teamRows.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Days</th><th>Hours</th><th>Loads</th><th>Trees</th><th>Trees / hour</th><th>Min between collections</th><th>Trees / load</th><th>Min to unload</th><th>Misses</th></tr></thead><tbody>${A.teamRows.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.days}</td><td>${f1(t.hrs)}</td><td>${t.loads}</td><td>${t.trees}</td><td><b>${f1(t.rate)}</b></td><td>${f1(t.between)}</td><td>${f1(t.perLoad)}</td><td>${f1(t.unload)}</td><td>${t.miss}</td></tr>`).join("")}</tbody></table></div>`:`<div class="hint">Fills in once teams start collecting on the collection days.</div>`}
+   ${yrs.filter(y=>(H[y].teams||[]).length).map(y=>`<details class="hq" style="margin-top:8px"><summary>Each team in ${esc(y)}</summary><div class="tw"><table><thead><tr><th>Team</th><th>Hours</th><th>Trees</th><th>Trees / hour</th><th>Trees / load</th><th>Min to unload</th></tr></thead><tbody>${H[y].teams.map(t=>`<tr><td>${esc(t.name)}</td><td>${f1(t.hrs)}</td><td>${t.trees}</td><td>${f1(t.rate)}</td><td>${f1(t.perLoad)}</td><td>${f1(t.unload)}</td></tr>`).join("")}</tbody></table></div></details>`).join("")}
    <div class="row" style="margin-top:10px"><button class="btn" data-saveplan ${dis}>Save plan</button><button class="btn ghost" data-planreset ${dis}>Back to defaults</button></div>
    <div class="hint" style="margin-top:8px">Numbers in brackets are how many runs, stops or team-days the figure comes from. Defaults come from the October 2026 test simulation (979 addresses, 1,019 trees).</div></div>`;
   main.querySelectorAll("input.pf").forEach(i=>i.addEventListener("input",()=>i.dataset.dirty="1"));
