@@ -821,8 +821,15 @@ function renderTeams(main){
 }
 
 /* ---------- actions ---------- */
-async function put(path,data){ try{ await db.doc(path).set(data); return true }catch(e){ return fail(e) } }
-async function patch(path,data){ try{ await db.doc(path).update(data); return true }catch(e){ return fail(e) } }
+async function put(path,data){ try{ await db.doc(path).set(data); localApply(path,data,true); return true }catch(e){ return fail(e) } }
+async function patch(path,data){ try{ await db.doc(path).update(data); localApply(path,data,false); return true }catch(e){ return fail(e) } }
+let laT=null;
+function localApply(path,data,whole){   // show a saved change straight away; the live feed confirms it a moment later
+  try{ const [c,id]=path.split("/");
+    if(c==="settings"&&id==="main"){ settings=whole?{...data}:{...settings,...data} }
+    else{ const m=c==="stops"?stops:c==="runs"?runs:c==="teams"?teams:null; if(!m) return;
+      const k=c==="stops"?parseInt(id.slice(1),10):id; const cur=m.get(k); if(!cur&&!whole) return; const v=whole?{...data}:{...cur,...data}; m.set(k,c==="stops"?attachHelpers(v):v) }
+    clearTimeout(laT); laT=setTimeout(()=>{ ISO=null; render() },50) }catch(e){} }
 function fail(e){ if(e&&e.code==="invalid_argument"){canWrite=false;$("#ro").hidden=false;render()} else toast("Couldn't save. Check the connection and tap again."); return false }
 async function copyText(t){
   try{ await navigator.clipboard.writeText(t); return true }catch(e){}
@@ -966,7 +973,7 @@ async function act(b,d){
   if(d.ref&&d.v){
     const s=stops.get(+d.ref); if(!s) return; const now=new Date().toISOString(); const r=runs.get(s.run);
     if(d.v==="Collected") await patch("stops/"+sid(s.ref), s.status==="Collected"?{status:"out"}:{status:"Collected",collectedAt:now,missedAt:null,attempts:s.status==="Missed"?s.attempts-1:s.attempts});
-    else if(s.status==="Missed") await patch("stops/"+sid(s.ref),{status:"out",attempts:Math.max(0,(s.attempts||1)-1)});
+    else if(s.status==="Missed") await patch("stops/"+sid(s.ref),r&&r.state==="out"?{status:"out",attempts:Math.max(0,(s.attempts||1)-1)}:{status:"Collected",collectedAt:s.collectedAt||now,missedAt:null,attempts:Math.max(0,(s.attempts||1)-1)});   // undo on a finished run goes back to Collected, not On the road
     else await patch("stops/"+sid(s.ref),{status:"Missed",missedAt:now,missRun:r?r.n:null,attempts:(s.attempts||0)+1,replyAt:null});
     return;
   }
@@ -1061,8 +1068,8 @@ render();
   const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-core","area-link","area-max"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
     render(); for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id); if(el&&id!=="team-sel") el.value=v; else if(el&&teams.has(v)) el.value=v}
     if(k){const el=document.getElementById(k.id); if(el) el.focus()}};
-  db.collection("stops").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; redraw()},()=>toast("Live updates stopped. Reload the page."));
-  db.collection("runs").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} runs=mp; got.runs=true; redraw()},()=>{});
+  db.collection("stops").limit(20000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; redraw()},()=>toast("Live updates stopped. Reload the page."));
+  db.collection("runs").limit(5000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} runs=mp; got.runs=true; redraw()},()=>{});
   db.doc("settings/main").onSnapshot(snap=>{settings=snap.exists?{...snap.data()}:{}; AREA={core:+settings.areaCore||8,link:+settings.areaLink||3,max:+settings.areaMax||20}; ISO=null; redraw()},()=>{});
   db.collection("teams").limit(500).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} teams=mp; got.teams=true; redraw()},()=>{});
 })();
