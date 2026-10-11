@@ -710,7 +710,7 @@ function planActuals(){
   const coll=all.filter(s=>s.status==="Collected").length, misses=all.reduce((a,s)=>a+(s.attempts||0),0), reb=all.filter(s=>s.rebooked===true).length;
   const teamsUsed=new Set(rs.map(r=>r.teamId||r.team)).size, daysUsed=new Set(rs.map(r=>new Date(r.sentAt).toDateString())).size;
   const out={teams:[teamsUsed||null,teamsUsed],days:[daysUsed||null,daysUsed],hours:[avg(hrs),hrs.length],between:[avg(between),between.length],perLoad:[avg(perLoad),perLoad.length],back:[avg(back),back.length],unload:[avg(unload),unload.length],
-    missRate:[coll+misses?100*misses/(coll+misses):null,coll+misses],rebook:[misses?100*reb/misses:null,misses],rate:[th?tt/th:null,td.length]};
+    missRate:[rs.length&&coll+misses?100*misses/(coll+misses):null,rs.length?coll+misses:0],rebook:[rs.length&&misses?100*reb/misses:null,rs.length?misses:0],rate:[th?tt/th:null,td.length]};
   const yr=rs.length?Math.max(...rs.map(r=>new Date(r.sentAt).getFullYear())):null;
   const r1=v=>v==null?null:Math.round(v*10)/10;
   const teamRows=Object.entries(per).map(([id,p])=>({id,name:p.name,days:p.days,hrs:r1(p.hrs),loads:p.loads,trees:p.trees,rate:p.hrs?r1(p.trees/p.hrs):null,between:r1(avg(p.gaps)),perLoad:p.loads?r1(p.trees/p.loads):null,unload:r1(avg(p.unl)),miss:p.miss})).sort((a,b)=>(b.rate||0)-(a.rate||0));
