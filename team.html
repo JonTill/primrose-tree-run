@@ -95,6 +95,7 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--blue);outline-offse
 .role b{color:var(--fg)}.role button{font:700 .85rem var(--body);background:none;border:0;color:var(--blue);text-decoration:underline;cursor:pointer;padding:4px}
 .crewnote{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem;color:var(--muted)}
 .loadln{font-size:.9rem;color:var(--muted)}.loadln b{color:var(--fg)}
+.full+.nf{margin-top:8px}.nf+.nxt,.nf+.crewnote{margin-top:10px}
 .nf{font:700 .95rem var(--body);padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;width:100%}
 </style></head><body>
 <div class="wrap">
@@ -122,7 +123,7 @@ function rolePick(){return new Promise(res=>{const m=document.createElement("div
    <button class="btn ghost" data-r="crew">Crew: helper</button><div class="sub">Ticks off collections, tree counts and photos. Follows the driver's phone and never holds it up.</div></div>`;
   m.addEventListener("click",e=>{const b=e.target.closest("[data-r]"); if(!b) return; m.remove(); res(b.dataset.r)}); document.body.appendChild(m)})}
 function notFullWhy(){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
-  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Heading back, not full?</h2><div class="sub">Any collections you haven't done go back on the list. This won't change how many trees the app plans for your vehicle.</div>
+  m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Heading back, not full?</h2><div class="sub">Any collections you haven't done go back on the list. It won't lower the number of trees the app plans for your vehicle.</div>
    <button class="btn" data-n="Out of time">Out of time</button><button class="btn" data-n="End of the day">End of the day</button><button class="btn" data-n="Other">Other reason</button><button class="btn ghost" data-n="">Cancel</button></div>`;
   m.addEventListener("click",e=>{const b=e.target.closest("[data-n]"); if(!b) return; m.remove(); res(b.dataset.n||null)}); document.body.appendChild(m)})}
 function toast(t){const e=$("#toast");e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2600)}
@@ -259,13 +260,12 @@ function render(){
 }
 function whereStart(){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Where are you starting from?</h2><div class="sub">We'll send you somewhere no other team is working.</div>
-   <button class="btn" data-w="gps">Use my location</button><button class="btn ghost" data-w="depot">We're at the GTAccess depot</button>${(data.dropPoints||[]).some(p=>p.id!=="hq")?`<button class="btn ghost" data-w="drop">${(data.dropPoints||[]).length>1?"We're at a drop-off point":"We're at "+esc(data.dropPoints[0].name)}</button>`:""}
+   <button class="btn" data-w="gps">Use my location</button>${(data.dropPoints||[]).map(p=>`<button class="btn ghost" data-w="drop" data-id="${esc(p.id)}">We're at ${esc(p.name)}</button>`).join("")}
    <div class="bar"><input class="pcin" id="pc" placeholder="Or enter a postcode" autocomplete="postal-code"><button class="btn" data-w="pc" style="width:auto">Go</button></div>
    <div class="sub" id="ws"></div><button class="btn ghost" data-w="x">Cancel</button></div>`;
   m.addEventListener("click",async e=>{const b=e.target.closest("[data-w]"); if(!b) return; const w=b.dataset.w; const st=m.querySelector("#ws");
     if(w==="x"){m.remove();return res(undefined)}
-    if(w==="depot"){ m.remove(); return res(null) }
-    if(w==="drop"){ m.remove(); const pts=data.dropPoints||[]; const id=pts.length>1?await dropPick(pts,null,"Which drop-off point are you at?"):pts[0]&&pts[0].id; if(!id) return res(undefined); const p=pts.find(x=>x.id===id); return res(id==="hq"||!p?null:{lat:+p.lat,lon:+p.lon}) }
+    if(w==="drop"){ m.remove(); const p=(data.dropPoints||[]).find(x=>x.id===b.dataset.id); return res(p?{lat:+p.lat,lon:+p.lon}:null) }
     if(w==="gps"){st.textContent="Finding you…"; const p=await getPos(12000); if(!p){st.textContent="Couldn't get your location. Allow location for this page, or tap one of the other options.";return} m.remove(); return res(p)}
     if(w==="pc"){const v=m.querySelector("#pc").value.trim(); if(!v){st.textContent="Enter a postcode";return} st.textContent="Looking up…"; let p=null; try{p=await pcLookup(v)}catch(_){} if(!p){st.textContent="Postcode not found. Check it, or use your location.";return} m.remove(); return res(p)} });
   document.body.appendChild(m)})}
