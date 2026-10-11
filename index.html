@@ -165,7 +165,7 @@ details.hq{background:var(--surface);border:1px solid var(--line);border-radius:
 <div id="toast" class="toast" hidden></div>
 
 <script>
-const DEPOT={lat:52.31926,lon:-2.05864,addr:"19-21 Sherwood Road, Bromsgrove B60 3DR"};
+const DEPOT={lat:52.32057,lon:-2.0442,addr:"Primrose Hospice, St Godwalds Road, Bromsgrove B60 3BW"};   // Primrose HQ: centre of the collection area and the fallback drop-off
 const EVENT_DAYS={fri:"2027-01-08",sat:"2027-01-09",sun:"2027-01-10"};
 const DAY_LABEL={fri:"Fri 8",sat:"Sat 9",sun:"Sun 10"};
 const MAX_STOPS=30; // sanity cap per run
@@ -647,7 +647,7 @@ async function renderMap(main){
 }
 
 /* ---------- drop-off points ---------- */
-function dropList(){ const dp=(settings.dropPoints||[]).filter(p=>p.id!=="hq"); if(!dp.length) return [{id:"hq",name:"HQ depot",address:"19-21 Sherwood Road, Bromsgrove",postcode:"B60 3DR",lat:DEPOT.lat,lon:DEPOT.lon,active:true}]; const m=mainDropId(); return [...dp.filter(p=>p.id===m),...dp.filter(p=>p.id!==m)] }
+function dropList(){ const dp=(settings.dropPoints||[]).filter(p=>p.id!=="hq"); if(!dp.length) return [{id:"hq",name:"Primrose HQ",address:"Primrose Hospice, St Godwalds Road, Bromsgrove",postcode:"B60 3BW",lat:DEPOT.lat,lon:DEPOT.lon,active:true}]; const m=mainDropId(); return [...dp.filter(p=>p.id===m),...dp.filter(p=>p.id!==m)] }
 function mainDropId(){ const dp=(settings.dropPoints||[]).filter(p=>p.id!=="hq"); return dp.some(p=>p.id===settings.mainDrop)?settings.mainDrop:(dp[0]||{}).id }
 function dpTag(r){ return r.dropPoint&&dropList().length>1?` → ${esc(r.dropPoint.name)}`:"" }
 function dropStats(){ const st={}, today=new Date().toDateString();
