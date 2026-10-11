@@ -32,12 +32,14 @@
     const q = { _limit: 1000,
       limit(n){ const c = Object.create(q); c._limit = n; return c; },
       orderBy(){ return this; }, where(){ return this; },
-      async get(){ const {data, error} = await sb.from("docs").select("path,data").eq("coll", coll).limit(this._limit); if (error) throw mapErr(error);
+      async get(){ const data = []; for (let from = 0; from < this._limit; from += 1000) { const res = await sb.from("docs").select("path,data").eq("coll", coll).order("path").range(from, Math.min(from + 999, this._limit - 1)); if (res.error) throw mapErr(res.error); data.push(...res.data); if (res.data.length < 1000) break; }
         const docs = data.map(snap); return {docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata:{fromCache:false,hasPendingWrites:false}}; },
       onSnapshot(next, onErr){
         const rows = new Map(); let alive = true, timer = null;
         const emit = () => { const docs = [...rows.values()].sort((a,b)=>a.path<b.path?-1:1).map(snap); next({docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata:{fromCache:false,hasPendingWrites:false}}); };
-        const load = async () => { const {data, error} = await sb.from("docs").select("path,data").eq("coll", coll).limit(this._limit);
+        const load = async () => { const data = []; let error = null;   // page through: the server returns at most 1000 rows per request
+          for (let from = 0; from < this._limit; from += 1000) { const res = await sb.from("docs").select("path,data").eq("coll", coll).order("path").range(from, Math.min(from + 999, this._limit - 1));
+            if (res.error) { error = res.error; break; } data.push(...res.data); if (res.data.length < 1000) break; }
           if (!alive) return; if (error) { onErr && onErr(mapErr(error)); return; } rows.clear(); for (const r of data) rows.set(r.path, r); emit(); };
         const l = (ev, row, old) => { const p = (row || old).path; if (p.replace(/\/[^/]+$/, "") !== coll) return;
           if (ev === "DELETE") rows.delete(p); else rows.set(p, row); emit(); };
