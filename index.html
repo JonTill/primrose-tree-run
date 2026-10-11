@@ -228,6 +228,7 @@ function nowSlot(team,now=new Date()){
 function who(t){t=t||{};return [t.contact,t.phone].filter(Boolean).join(" · ")}
 function whoRun(r){return who(teams.get(r&&r.teamId))}
 function runOf(n){for(const r of runs.values()) if(r.n===n) return r; return null}
+const mem=pre=>[2,3].map(n=>({name:(document.getElementById(pre+"-m"+n+"n")?.value||"").trim().slice(0,80),phone:(document.getElementById(pre+"-m"+n+"p")?.value||"").trim().slice(0,30)})).filter(m=>m.name);
 function teamBusy(id){for(const r of runs.values()) if(r.state==="out"&&r.teamId===id) return r; return null}
 function slotText(t){return (t.slots||[]).map(s=>`${DAY_LABEL[s.day]||s.day} ${s.from}–${s.to}`).join(", ")||"No times agreed"}
 function teamOptions(sel){
@@ -522,6 +523,7 @@ function editTeam(t){
     d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:520px"><h2>Edit ${esc(t.name)}</h2>
      <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-name">Team name</label><input id="et-name" type="text" value="${esc(t.name)}"></div><div class="field" style="flex:0 1 110px"><label for="et-cap">Trees per run</label><input id="et-cap" type="number" min="1" max="60" value="${esc(t.capacity)}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-contact">Contact name</label><input id="et-contact" type="text" value="${esc(t.contact||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-phone">Phone</label><input id="et-phone" type="tel" inputmode="tel" value="${esc(t.phone||"")}"></div></div>
+     <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m2n">Team member 2 (optional)</label><input id="et-m2n" type="text" autocomplete="off" value="${esc((((t).members||[])[0]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m2p">Their phone</label><input id="et-m2p" type="tel" inputmode="tel" value="${esc((((t).members||[])[0]||{}).phone||"")}"></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m3n">Team member 3 (optional)</label><input id="et-m3n" type="text" autocomplete="off" value="${esc((((t).members||[])[1]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m3p">Their phone</label><input id="et-m3p" type="tel" inputmode="tel" value="${esc((((t).members||[])[1]||{}).phone||"")}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-email">Email</label><input id="et-email" type="email" value="${esc(t.email||"")}"></div><div class="field" style="flex:1 1 170px"><label for="et-vehicle">Vehicle</label><select id="et-vehicle"><option value="">Choose…</option>${veh.map(v=>`<option ${v===t.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div></div>
      <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(k=>`<label><input type="checkbox" id="et-d-${k}" ${days.has(k)?"checked":""}> ${DAY_LABEL[k]}</label>`).join("")}</div>
       <div class="row"><div class="field" style="flex:0 1 130px"><label for="et-from">From</label><input id="et-from" type="time" value="${esc(s0.from||"09:00")}"></div><div class="field" style="flex:0 1 130px"><label for="et-to">To</label><input id="et-to" type="time" value="${esc(s0.to||"15:30")}"></div></div></div>
@@ -541,7 +543,7 @@ function editTeam(t){
       const from=q("#et-from").value||"09:00", to=q("#et-to").value||"15:30";
       const slots=Object.keys(EVENT_DAYS).filter(k=>q("#et-d-"+k).checked).map(day=>({day,from,to}));
       b.disabled=true;
-      const ok=await patch("teams/"+t.id,{name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,200),large:q("#et-large").checked,extra:q("#et-extra").checked});
+      const ok=await patch("teams/"+t.id,{name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,200),large:q("#et-large").checked,extra:q("#et-extra").checked,members:mem("et")});
       if(ok&&name!==t.name){ for(const r of runs.values()) if(r.teamId===t.id&&r.state==="out") await patch("runs/"+r.id,{team:name.slice(0,60)}) }
       b.disabled=false; if(ok) close(true) });
     document.addEventListener("keydown",kd,true); document.body.appendChild(d); d.querySelector("#et-name").focus();
@@ -663,23 +665,76 @@ function editDrop(p){ return new Promise(async res=>{ try{ await loadPC() }catch
     b.disabled=true; const ok=await put("settings/main",{...settings,dropPoints:next}); b.disabled=false; if(ok) close(true) });
   document.body.appendChild(d); d.querySelector("#dp-name").focus() }) }
 function renderSettings(main){
-  const dis=canWrite?"":"disabled", sub=view.ssub==="run"?"run":"set";
-  const bar=`<div class="subtabs" role="tablist"><button data-ssub="set" aria-pressed="${sub==="set"}">Settings</button><button data-ssub="run" aria-pressed="${sub==="run"}">Send an office run</button></div>`;
+  const dis=canWrite?"":"disabled", sub=["run","plan"].includes(view.ssub)?view.ssub:"set";
+  const bar=`<div class="subtabs" role="tablist"><button data-ssub="set" aria-pressed="${sub==="set"}">Settings</button><button data-ssub="run" aria-pressed="${sub==="run"}">Send an office run</button><button data-ssub="plan" aria-pressed="${sub==="plan"}">Planning figures</button></div>`;
+  if(sub==="plan"){ renderPlan(main,bar); return }
   if(sub==="run"){ renderDispatch(main); main.insertAdjacentHTML("afterbegin",bar+`<div class="hint" style="margin-bottom:8px">Most teams use their team link. Build a run here for a team with no smartphone or poor signal, Sunday mop-up, an authorised out-of-area pickup or a big vehicle on a dense estate.</div>`); return }
   main.innerHTML=bar+`<div class="card"><h2>Office mobile</h2>
    <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on their phone and in emails</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Driver options</h2>
-   <div class="row" style="align-items:center;justify-content:space-between"><div><b>${settings.selfService===false?"Off":"On"}:</b> when drivers finish a run they can add extra collections near them, and after unloading ask for another run. Runs they ask for are built the same way as office runs and show <b>Driver asked</b> on the Teams Status tab.</div><button class="btn ${settings.selfService===false?"":"ghost"}" data-selfsvc ${dis}>${settings.selfService===false?"Turn on":"Turn off"}</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. The main drop-off is used when a team's position isn't known. Office-built runs still start from the GTAccess depot.</div>
    ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"||p.id===mainDropId()?'<span class="chip done">Main drop-off</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this weekend</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"||p.id===mainDropId()?"":`<button class="btn ghost" data-maindrop="${esc(p.id)}" ${dis}>Make main</button><button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
    <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>`;
+}
+const PLAN_ROWS=[
+ ["teams","Teams on the road",16,"teams",""],
+ ["days","Collection days",3,"days",""],
+ ["hours","Hours each team works a day",6,"h","hours"],
+ ["perStop","Minutes loading at each address",3,"min",""],
+ ["perExtra","Extra minutes for each extra tree",1,"min",""],
+ ["between","Minutes from one collection to the next (drive + load)",7,"min","between"],
+ ["perLoad","Trees per load",10,"trees","perLoad"],
+ ["back","Minutes driving back to unload",12,"min","back"],
+ ["unload","Minutes to unload",30,"min","unload"],
+ ["lunch","Minutes for lunch",30,"min",""],
+ ["missRate","% of addresses with no tree out",2,"%","missRate"],
+ ["rebook","% of misses rebooked",50,"%","rebook"],
+ ["rate","Trees per team per hour",6.2,"trees","rate"]];
+function planVal(k){ const p=settings.plan||{}, r=PLAN_ROWS.find(x=>x[0]===k); return p[k]!=null&&p[k]!==""?+p[k]:r[2] }
+function planActuals(){
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null, mins=(a,b)=>(new Date(b)-new Date(a))/60000;
+  const all=[...stops.values()], rs=[...runs.values()].filter(r=>r.sentAt);
+  const byRun={}; for(const s of all) if(s.run&&s.status==="Collected") (byRun[s.run]=byRun[s.run]||[]).push(s);
+  const between=[], perLoad=[], back=[], unload=[]; const day={};
+  for(const r of rs){ const c=(byRun[r.id]||[]).filter(s=>s.collectedAt).map(s=>new Date(s.collectedAt)).sort((a,b)=>a-b);
+    for(let i=1;i<c.length;i++){ const m=(c[i]-c[i-1])/60000; if(m>0&&m<60) between.push(m) }
+    if(r.unloadedAt||r.arrivedAt){ const t=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0); if(t) perLoad.push(t) }
+    if(r.returningAt&&r.arrivedAt){ const m=mins(r.returningAt,r.arrivedAt); if(m>0&&m<120) back.push(m) }
+    if(r.arrivedAt&&r.unloadedAt){ const m=mins(r.arrivedAt,r.unloadedAt); if(m>0&&m<180) unload.push(m) }
+    const k=(r.teamId||r.team)+"|"+new Date(r.sentAt).toDateString(), end=[r.unloadedAt,r.doneAt,r.arrivedAt,...c.map(x=>x.toISOString())].filter(Boolean).map(x=>new Date(x)).sort((a,b)=>b-a)[0]||new Date(r.sentAt);
+    const o=day[k]||(day[k]={a:new Date(r.sentAt),b:end,trees:0}); if(new Date(r.sentAt)<o.a) o.a=new Date(r.sentAt); if(end>o.b) o.b=end; o.trees+=(byRun[r.id]||[]).reduce((a,s)=>a+s.trees,0) }
+  const td=Object.values(day).filter(o=>o.b>o.a), hrs=td.map(o=>(o.b-o.a)/3600000), th=hrs.reduce((a,b)=>a+b,0), tt=td.reduce((a,o)=>a+o.trees,0);
+  const coll=all.filter(s=>s.status==="Collected").length, misses=all.reduce((a,s)=>a+(s.attempts||0),0), reb=all.filter(s=>s.rebooked===true).length;
+  const teamsUsed=new Set(rs.map(r=>r.teamId||r.team)).size, daysUsed=new Set(rs.map(r=>new Date(r.sentAt).toDateString())).size;
+  const out={teams:[teamsUsed||null,teamsUsed],days:[daysUsed||null,daysUsed],hours:[avg(hrs),hrs.length],between:[avg(between),between.length],perLoad:[avg(perLoad),perLoad.length],back:[avg(back),back.length],unload:[avg(unload),unload.length],
+    missRate:[coll+misses?100*misses/(coll+misses):null,coll+misses],rebook:[misses?100*reb/misses:null,misses],rate:[th?tt/th:null,td.length]};
+  const yr=rs.length?Math.max(...rs.map(r=>new Date(r.sentAt).getFullYear())):null;
+  return {out,yr,booked:all.filter(s=>s.status!=="Closed").reduce((a,s)=>a+(s.trees||1),0),collected:all.reduce((a,s)=>a+(s.status==="Collected"?s.trees:0),0)} }
+let planSavedAt=0;
+function planAutosave(A){ if(!canWrite||!A.yr||Date.now()-planSavedAt<600000) return; const snap={}; for(const [k,[v,n]] of Object.entries(A.out)) if(v!=null) snap[k]={v:Math.round(v*10)/10,n};
+  if(!Object.keys(snap).length) return; const h=settings.planHistory||{}, prev=JSON.stringify((h[A.yr]||{}).figs||{});
+  planSavedAt=Date.now(); if(prev===JSON.stringify(snap)) return;
+  put("settings/main",{...settings,planHistory:{...h,[A.yr]:{figs:snap,trees:A.collected,booked:A.booked,savedAt:new Date().toISOString()}}}) }
+function renderPlan(main,bar){
+  const dirty={}; document.querySelectorAll("input.pf[data-dirty]").forEach(i=>dirty[i.dataset.pk]=i.value);
+  const dis=canWrite?"":"disabled", A=planActuals(), H=settings.planHistory||{}, yrs=Object.keys(H).sort().slice(-3), f1=v=>v==null?"–":(Math.round(v*10)/10).toString();
+  planAutosave(A);
+  const rate=(A.out.rate[1]>=5&&A.out.rate[0])?A.out.rate[0]:planVal("rate"), need=Math.ceil(A.booked/(rate*planVal("hours")*planVal("days")));
+  main.innerHTML=bar+`<div class="card"><h2>Planning figures</h2><div class="hint">The <b>Plan</b> column is what we expect; change it and tap Save. The <b>This year</b> column is worked out from the app as teams collect, and is saved under the year so next year's plan can start from real figures. Blank means not measured yet.</div>
+   <div class="tally" style="grid-template-columns:repeat(3,1fr);margin-top:10px"><div class="tile"><span>Trees booked</span><b>${A.booked}</b><small>${A.collected} collected</small></div><div class="tile"><span>Trees / team / hour</span><b>${f1(rate)}</b><small>${A.out.rate[1]>=5?"this year":"plan"}</small></div><div class="tile"><span>Teams needed</span><b>${need}</b><small>${planVal("days")} days of ${planVal("hours")} hours</small></div></div>
+   <div class="tw" style="margin-top:10px"><table><thead><tr><th>Figure</th><th>Plan</th><th>This year</th>${yrs.map(y=>`<th>${esc(y)}</th>`).join("")}</tr></thead><tbody>
+   ${PLAN_ROWS.map(([k,l,def,u,act])=>{const a=act?A.out[act]:null; return `<tr><td>${esc(l)}</td><td style="white-space:nowrap"><input class="pf" id="pf-${k}" data-pk="${k}" ${k in dirty?"data-dirty":""} type="number" step="any" min="0" value="${esc(String(k in dirty?dirty[k]:planVal(k)))}" aria-label="${esc(l)}, plan" style="width:5.5em" ${dis}> ${u}</td><td>${act?(a&&a[0]!=null?`<b>${f1(a[0])}</b> <span class="hint">(${a[1]})</span>`:"–"):'<span class="hint">not measured</span>'}</td>${yrs.map(y=>{const v=((H[y]||{}).figs||{})[k]; return `<td>${v?f1(v.v):"–"}</td>`}).join("")}</tr>`}).join("")}
+   </tbody></table></div>
+   <div class="row" style="margin-top:10px"><button class="btn" data-saveplan ${dis}>Save plan</button><button class="btn ghost" data-planreset ${dis}>Back to defaults</button></div>
+   <div class="hint" style="margin-top:8px">Numbers in brackets are how many runs, stops or team-days the figure comes from. Defaults come from the October 2026 test simulation (979 addresses, 1,019 trees).</div></div>`;
+  main.querySelectorAll("input.pf").forEach(i=>i.addEventListener("input",()=>i.dataset.dirty="1"));
 }
 const HELP=[
  ["Before the weekend",[
   ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>Copy Link</b> on each team row and send it to the contact by text or email. The link works all weekend. Teams tap <b>Lets go get some Trees!</b> and get one collection at a time."],
   ["Set the office mobile","Settings tab, <b>Office mobile</b>, Save. Drivers see it on their <b>Call office</b> button and in emails."],
   ["Add or change a drop-off point","Settings tab, <b>Drop-off points</b>. <b>Add a drop-off point</b> needs a name, address and postcode. The main drop-off (Primrose HQ) is used when a team's position isn't known; tap <b>Make main</b> on another point to change it. <b>Switch off</b> a point that's shut or full."],
-  ["Add a team","Teams tab, <b>Add a team</b>. Name, trees per run, contact, phone and vehicle are needed. Tick <b>Can take large trees</b> for a van, trailer or Luton."]]],
+  ["Add a team","Teams tab, <b>Add a team</b>. Name, trees per run, contact, phone and vehicle are needed. Add up to two more team members and their phones if you want. Tick <b>Can take large trees</b> for a van, trailer or Luton."],
+  ["Check how many teams we need","Settings tab, <b>Planning figures</b>. Change the plan figures and tap Save; <b>Teams needed</b> updates. During the weekend the <b>This year</b> column fills in from the app and is saved under the year for next time."]]],
  ["During the weekend",[
   ["See where every team is","<b>Teams Status</b>: On road, Returning to unload, Unloading, Completed and Logged off. <b>Map</b> shows teams on the road and the jobs they're holding."],
   ["A team gave up or missed a step","Open the run on Teams Status. <b>Move this run on</b>: <b>Abandoned</b> puts unmarked stops back on the list for another team; or move it to Unloading, Completed or Logged off."],
@@ -714,6 +769,7 @@ function renderTeams(main){
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Trees per run</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
    </div>
    <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-contact">Contact name</label><input id="t-contact" type="text" autocomplete="off" placeholder="e.g. Karen Bannister"></div><div class="field" style="flex:1 1 140px"><label for="t-phone">Phone</label><input id="t-phone" type="tel" inputmode="tel" placeholder="07700 900000"></div><div class="field" style="flex:2 1 200px"><label for="t-email">Email</label><input id="t-email" type="email" placeholder="name@example.com"></div><div class="field" style="flex:1 1 170px"><label for="t-vehicle">Vehicle</label><select id="t-vehicle"><option value="">Choose…</option><option>Estate car</option><option>Estate car &amp; trailer</option><option>Pickup truck</option><option>Small van</option><option>Transit van</option><option>Large van / Luton</option><option>Other</option></select></div></div>
+   <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m2n">Team member 2 (optional)</label><input id="t-m2n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m2p">Their phone</label><input id="t-m2p" type="tel" inputmode="tel" value=""></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m3n">Team member 3 (optional)</label><input id="t-m3n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m3p">Their phone</label><input id="t-m3p" type="tel" inputmode="tel" value=""></div></div>
    <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(d=>`<label><input type="checkbox" id="t-d-${d}"> ${DAY_LABEL[d]}</label>`).join("")}</div>
    <div class="row"><div class="field" style="flex:0 1 130px"><label for="t-from">From</label><input id="t-from" type="time" value="09:00"></div><div class="field" style="flex:0 1 130px"><label for="t-to">To</label><input id="t-to" type="time" value="15:30"></div></div></div>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
@@ -723,7 +779,7 @@ function renderTeams(main){
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Per run</th><th>Agreed times</th><th>Done</th><th>Team link</th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td style="white-space:nowrap">${n} run${n===1?"":"s"}<br>${col} tree${col===1?"":"s"}${b?`<br><span class="chip out">Out</span>`:""}</td><td>${teamLinkCell(t,dis)}<div class="tbtns" style="margin-top:6px"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit Team</button><button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button></div></td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${(t.members||[]).length?"<br>Also: "+t.members.map(m=>esc(m.name)+(m.phone?" ("+esc(m.phone)+")":"")).join(", "):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td style="white-space:nowrap">${n} run${n===1?"":"s"}<br>${col} tree${col===1?"":"s"}${b?`<br><span class="chip out">Out</span>`:""}</td><td>${teamLinkCell(t,dis)}<div class="tbtns" style="margin-top:6px"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit Team</button><button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button></div></td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -927,12 +983,13 @@ async function act(b,d){
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
   if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); if(ok) toast(`${t.name} link copied`); else if(ok===false) toast("Couldn't copy"); return }
   if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name}: jobs resumed`:`${t.name}: jobs paused`); return }
-  if("selfsvc" in d){ const on=settings.selfService!==false; if(await put("settings/main",{...settings,selfService:!on})) toast(on?"Drivers now need the office for extra stops and new runs":"Drivers can add extra collections and ask for another run"); return }
   if(d.maindrop){ const p=(settings.dropPoints||[]).find(x=>x.id===d.maindrop); if(!p) return; if(await put("settings/main",{...settings,mainDrop:p.id,dropPoints:settings.dropPoints.map(x=>x.id===p.id?{...x,active:true}:x)})) toast(`${p.name} is now the main drop-off`); return }
   if("adddrop" in d){ if(await editDrop(null)) toast("Drop-off point added"); return }
   if(d.editdrop){ const p=dropList().find(x=>x.id===d.editdrop); if(p&&await editDrop(p)) toast(`${p.name} saved`); return }
   if(d.togdrop){ const p=(settings.dropPoints||[]).find(x=>x.id===d.togdrop); if(!p) return; if(await put("settings/main",{...settings,dropPoints:settings.dropPoints.map(x=>x.id===p.id?{...x,active:x.active===false}:x)})) toast(`${p.name} switched ${p.active===false?"on":"off"}`); return }
   if(d.deldrop){ const p=(settings.dropPoints||[]).find(x=>x.id===d.deldrop); if(!p) return; if(!await confirmBox("Remove this drop-off point?",`${p.name} will be removed. Teams already heading there keep their directions.`,"Remove")) return; if(await put("settings/main",{...settings,dropPoints:settings.dropPoints.filter(x=>x.id!==p.id)})) toast(`${p.name} removed`); return }
+  if("saveplan" in d){ const p={}; document.querySelectorAll("input.pf").forEach(i=>{ const v=parseFloat(i.value); if(!isNaN(v)&&v>=0) p[i.dataset.pk]=v }); if(await put("settings/main",{...settings,plan:p})){ document.querySelectorAll("input.pf").forEach(i=>delete i.dataset.dirty); toast("Plan saved") } return }
+  if("planreset" in d){ if(!await confirmBox("Put the plan back to the defaults?","This-year and past-year figures are kept.","Reset")) return; const {plan,...rest}=settings; if(await put("settings/main",rest)) toast("Plan back to defaults"); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await put("settings/main",{...settings,officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
   if("addteam" in d){
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
@@ -943,7 +1000,7 @@ async function act(b,d){
     const from=$("#t-from").value||"09:00", to=$("#t-to").value||"15:30";
     const slots=Object.keys(EVENT_DAYS).filter(k=>$("#t-d-"+k).checked).map(day=>({day,from,to}));
     const id="t"+Date.now().toString(36);
-    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,extra:$("#t-extra").checked,large:$("#t-large").checked})) toast(`${name} added`);
+    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,extra:$("#t-extra").checked,large:$("#t-large").checked,members:mem("t")})) toast(`${name} added`);
     return;
   }
   if(d.editteam){ const t=teams.get(d.editteam); if(t&&await editTeam(t)) toast(`${t.name} updated`); return }
@@ -959,7 +1016,7 @@ render();
   if(u){ try{me=await u.id()}catch(e){} try{const c=await u.can("data.write"); if(c===false){canWrite=false;$("#ro").hidden=false}}catch(e){} }
   if(!db){render();return}
   const keep=()=>{const ae=document.activeElement; return ae&&ae.id&&ae.tagName!=="BUTTON"?{id:ae.id,val:ae.value}:null};
-  const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
+  const redraw=()=>{const k=keep(); const vals={}; for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone","t-m2n","t-m2p","t-m3n","t-m3p"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
     render(); for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id); if(el&&id!=="team-sel") el.value=v; else if(el&&teams.has(v)) el.value=v}
     if(k){const el=document.getElementById(k.id); if(el) el.focus()}};
   db.collection("stops").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; redraw()},()=>toast("Live updates stopped. Reload the page."));
