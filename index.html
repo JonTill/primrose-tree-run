@@ -676,8 +676,8 @@ function renderSettings(main){
    <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>`;
 }
 const PLAN_ROWS=[
- ["teams","Teams on the road",16,"teams",""],
- ["days","Collection days",3,"days",""],
+ ["teams","Teams on the road",16,"teams","teams"],
+ ["days","Collection days",3,"days","days"],
  ["hours","Hours each team works a day",6,"h","hours"],
  ["perStop","Minutes loading at each address",3,"min",""],
  ["perExtra","Extra minutes for each extra tree",1,"min",""],
@@ -692,7 +692,7 @@ const PLAN_ROWS=[
 function planVal(k){ const p=settings.plan||{}, r=PLAN_ROWS.find(x=>x[0]===k); return p[k]!=null&&p[k]!==""?+p[k]:r[2] }
 function planActuals(){
   const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null, mins=(a,b)=>(new Date(b)-new Date(a))/60000;
-  const all=[...stops.values()], rs=[...runs.values()].filter(r=>r.sentAt);
+  const ev=Object.values(EVENT_DAYS), all=[...stops.values()], rs=[...runs.values()].filter(r=>r.sentAt&&ev.includes(new Date(r.sentAt).toLocaleDateString("en-CA")));
   const byRun={}; for(const s of all) if(s.run&&s.status==="Collected") (byRun[s.run]=byRun[s.run]||[]).push(s);
   const between=[], perLoad=[], back=[], unload=[]; const day={};
   for(const r of rs){ const c=(byRun[r.id]||[]).filter(s=>s.collectedAt).map(s=>new Date(s.collectedAt)).sort((a,b)=>a-b);
@@ -718,9 +718,9 @@ function renderPlan(main,bar){
   const dirty={}; document.querySelectorAll("input.pf[data-dirty]").forEach(i=>dirty[i.dataset.pk]=i.value);
   const dis=canWrite?"":"disabled", A=planActuals(), H=settings.planHistory||{}, yrs=Object.keys(H).sort().slice(-3), f1=v=>v==null?"–":(Math.round(v*10)/10).toString();
   planAutosave(A);
-  const rate=(A.out.rate[1]>=5&&A.out.rate[0])?A.out.rate[0]:planVal("rate"), need=Math.ceil(A.booked/(rate*planVal("hours")*planVal("days")));
-  main.innerHTML=bar+`<div class="card"><h2>Planning figures</h2><div class="hint">The <b>Plan</b> column is what we expect; change it and tap Save. The <b>This year</b> column is worked out from the app as teams collect, and is saved under the year so next year's plan can start from real figures. Blank means not measured yet.</div>
-   <div class="tally" style="grid-template-columns:repeat(3,1fr);margin-top:10px"><div class="tile"><span>Trees booked</span><b>${A.booked}</b><small>${A.collected} collected</small></div><div class="tile"><span>Trees / team / hour</span><b>${f1(rate)}</b><small>${A.out.rate[1]>=5?"this year":"plan"}</small></div><div class="tile"><span>Teams needed</span><b>${need}</b><small>${planVal("days")} days of ${planVal("hours")} hours</small></div></div>
+  const live=A.out.rate[1]>=10&&A.out.rate[0]>1, rate=live?A.out.rate[0]:planVal("rate"), need=Math.ceil(A.booked/(rate*planVal("hours")*planVal("days")));
+  main.innerHTML=bar+`<div class="card"><h2>Planning figures</h2><div class="hint">The <b>Plan</b> column is what we expect; change it and tap Save. The <b>This year</b> column is worked out from the app as teams collect, and is saved under the year so next year's plan can start from real figures. It only counts runs on the collection days (${Object.values(EVENT_DAYS).map(d=>new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short"})).join(", ")}), so test runs are ignored. A dash means not measured yet.</div>
+   <div class="tally" style="grid-template-columns:repeat(3,1fr);margin-top:10px"><div class="tile"><span>Trees booked</span><b>${A.booked}</b><small>${A.collected} collected</small></div><div class="tile"><span>Trees / team / hour</span><b>${f1(rate)}</b><small>${live?"this year":"plan"}</small></div><div class="tile"><span>Teams needed</span><b>${need}</b><small>${planVal("days")} days of ${planVal("hours")} hours</small></div></div>
    <div class="tw" style="margin-top:10px"><table><thead><tr><th>Figure</th><th>Plan</th><th>This year</th>${yrs.map(y=>`<th>${esc(y)}</th>`).join("")}</tr></thead><tbody>
    ${PLAN_ROWS.map(([k,l,def,u,act])=>{const a=act?A.out[act]:null; return `<tr><td>${esc(l)}</td><td style="white-space:nowrap"><input class="pf" id="pf-${k}" data-pk="${k}" ${k in dirty?"data-dirty":""} type="number" step="any" min="0" value="${esc(String(k in dirty?dirty[k]:planVal(k)))}" aria-label="${esc(l)}, plan" style="width:5.5em" ${dis}> ${u}</td><td>${act?(a&&a[0]!=null?`<b>${f1(a[0])}</b> <span class="hint">(${a[1]})</span>`:"–"):'<span class="hint">not measured</span>'}</td>${yrs.map(y=>{const v=((H[y]||{}).figs||{})[k]; return `<td>${v?f1(v.v):"–"}</td>`}).join("")}</tr>`}).join("")}
    </tbody></table></div>
