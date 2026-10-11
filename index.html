@@ -402,7 +402,13 @@ function renderRuns(main){
   const g={live:by("live"),ret:by("ret"),unl:by("unl"),done:by("done"),off:by("off")}, list=g[sub];
   const empty={live:"No teams on the road.",ret:"No teams heading back to unload.",unl:"No teams unloading.",done:"No completed runs yet.",off:"No teams have logged off yet."};
   main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${g.done.length})</button><button data-sub="off" aria-pressed="${sub==="off"}">Logged off (${g.off.length})</button></div>
+  ${leagueCard()}
   ${list.length?`<div class="list">${list.map(runRow).join("")}</div>`:`<div class="empty">${empty[sub]}</div>`}`;
+}
+function leagueCard(){
+  const rows=planActuals().teamRows.filter(t=>t.trees>0).slice(0,5);
+  if(!rows.length) return `<details class="card" style="margin:8px 0"><summary style="font-weight:700;cursor:pointer">Team league · top 5</summary><div class="hint" style="margin-top:6px">Fills in once teams start collecting on the collection days (8–10 Jan). Office only: teams don't see it.</div></details>`;
+  return `<details class="card" style="margin:8px 0" ${window.leagueShut?"":"open"} ontoggle="window.leagueShut=!this.open"><summary style="font-weight:700;cursor:pointer">Team league · top 5 by trees per hour</summary><div class="tw" style="margin-top:6px"><table><thead><tr><th>#</th><th>Team</th><th>Trees</th><th>Trees / hour</th><th>Loads</th></tr></thead><tbody>${rows.map((t,i)=>`<tr><td>${i+1}</td><td>${esc(t.name)}</td><td>${t.trees}</td><td><b>${t.rate==null?"–":t.rate.toFixed(1)}</b></td><td>${t.loads}</td></tr>`).join("")}</tbody></table></div><div class="hint" style="margin-top:4px">Office only: teams don't see it. Every team's full figures are in Settings › Planning figures.</div></details>`;
 }
 function renderRun(main,r){
   const list=runStops(r), open=list.filter(s=>s.status==="out").length, dis=canWrite?"":"disabled";
