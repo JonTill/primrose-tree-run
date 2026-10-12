@@ -16,7 +16,7 @@ header{border-bottom:5px solid var(--yellow);padding-bottom:10px}
 .logo img{height:56px;width:auto;background:#fff;border-radius:8px;padding:4px}
 h1{font:900 1.5rem/1.2 var(--display);color:var(--blue);margin:8px 0 0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
-.photo img{display:block;width:100%;height:auto;border-radius:10px}
+.photo img{display:block;width:100%;height:auto;border-radius:10px;margin-bottom:8px}
 .muted{color:var(--muted);font-size:.92rem}
 #st{margin-top:12px}
 .note p{margin:0 0 10px}
@@ -62,13 +62,14 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
     row.append(b1,b2); box.append(row);
     const ask=(choice,text)=>{
       box.innerHTML=""; box.append(P(text));
+      let wh=null; if(choice==="ready"){ const f=document.createElement("div"); f.className="form"; f.innerHTML='<label>Where exactly is the tree? (optional)<input id="wh" maxlength="120" placeholder="e.g. by the side gate, left of the garage"></label>'; box.append(f); wh=f.querySelector("#wh") }
       const r=document.createElement("div"); r.className="btns";
       const yes=document.createElement("button"); yes.className="btn go"; yes.textContent="Yes, confirm";
       const no=document.createElement("button"); no.className="btn"; no.textContent="Go back";
       r.append(yes,no); box.append(r);
       no.onclick=()=>stateBox("missed",data);
       yes.onclick=async()=>{ yes.disabled=no.disabled=true; yes.textContent="Saving…";
-        try{ const {data:res,error}=await sb.rpc("customer_respond",{p_key:key,p_choice:choice});
+        try{ const {data:res,error}=await sb.rpc("customer_reply",{p_key:key,p_choice:choice,p_where:wh?wh.value.trim()||null:null});
           if(error) throw error;
           if(res.ok) return stateBox(res.state,data);
           if(res.error==="too_late") return stateBox("missed",{...data,can_reply:false});
@@ -98,18 +99,18 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
     const confirm=(choice,text)=>{ box.innerHTML=""; box.append(P(text));
       const err=P(""); err.className="warn";
       box.append(btns([["Yes, confirm","go",async b=>{ b.disabled=true; b.textContent="Saving…"; const r=await send(choice); if(r) oaBox(r,data); else { b.disabled=false; b.textContent="Yes, confirm"; err.textContent="That didn't save. Please check your connection and try again." } }],["Go back","",()=>oaBox("outarea",data)]]),err) };
-    const send=async(choice,extra={})=>{ try{ const {data:res,error}=await sb.rpc("customer_oa_respond",{p_key:key,p_choice:choice,...extra}); if(error) return null;
+    const send=async(choice,extra={})=>{ try{ const {data:res,error}=await sb.rpc("customer_oa_reply",{p_key:key,p_choice:choice,p_where:null,...extra}); if(error) return null;
       if(res.ok) return res.state; if(res.error==="too_late"){ data.can_reply=false; return "outarea" } if(res.error==="already"){ location.reload(); return null } return res.error }catch(e){ return null } };
     box.append(btns([
       ["The address is wrong: correct it","go",()=>{ box.innerHTML=""; box.append(P("Please give the full address where the tree will be:"));
         const f=document.createElement("div"); f.className="form";
-        f.innerHTML='<label>House number and street, and town<input id="na" maxlength="150" autocomplete="street-address"></label><label>Postcode<input id="np" maxlength="10" autocapitalize="characters" autocomplete="postal-code"></label>';
+        f.innerHTML='<label>House number and street, and town<input id="na" maxlength="150" autocomplete="street-address"></label><label>Postcode<input id="np" maxlength="10" autocapitalize="characters" autocomplete="postal-code"></label><label>Where exactly will the tree be? (optional)<input id="nw" maxlength="120" placeholder="e.g. front garden, by the side gate"></label>';
         box.append(f); const err=P(""); err.className="warn";
         box.append(btns([["Save the new address","go",async b=>{ const a=f.querySelector("#na").value.trim(), pc=f.querySelector("#np").value.trim();
             if(a.length<5){ err.textContent="Please enter the house number, street and town."; return }
             if(!/^[A-Za-z]{1,2}[0-9][A-Za-z0-9]?[ ]*[0-9][A-Za-z]{2}$/.test(pc)){ err.textContent="Please check the postcode."; return }
             b.disabled=true; b.textContent="Saving…"; const g=await geo(pc);
-            const r=await send("address",{p_address:a,p_postcode:pc,p_lat:g?g[0]:null,p_lon:g?g[1]:null});
+            const r=await send("address",{p_address:a,p_postcode:pc,p_lat:g?g[0]:null,p_lon:g?g[1]:null,p_where:f.querySelector("#nw").value.trim()||null});
             if(r==="oa_in"||r==="oa_review"||r==="outarea") return oaBox(r,data);
             b.disabled=false; b.textContent="Save the new address"; err.textContent=r==="bad_postcode"?"Please check the postcode.":r==="bad_address"?"Please enter the house number, street and town.":"That didn't save. Please check your connection and try again." }],["Go back","",()=>oaBox("outarea",data)]]),err) }],
       ["Keep my payment as a donation","",()=>confirm("donate","Thank you! We'll keep your payment"+paid+" as a donation to Primrose Hospice, and we won't collect a tree.")],
@@ -125,8 +126,9 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
     if(!okImg){ const day=data.missed_at?" on "+fmt(data.missed_at,{weekday:"long",day:"numeric",month:"long"}):"";
       m.innerHTML='<p style="margin-top:0">Our volunteers called to collect your tree'+day+' but couldn&#39;t find it.</p><div id="st"></div>'; stateBox(data.state,data); return }
     const when=fmt(data.taken_at,{weekday:"long",day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"});
-    m.innerHTML='<p style="margin-top:0">Our volunteers took this photo when they called to collect your tree and couldn&#39;t find it.</p><div class="photo"><img alt="Photo taken by our collection team"></div><p class="muted">Taken '+when+'.</p><div id="st"></div>';
-    m.querySelector("img").src=data.img;
+    const re=/^data:image[/](jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, imgs=(Array.isArray(data.imgs)?data.imgs:[]).filter(x=>re.test(x||"")).slice(0,4); if(!imgs.length) imgs.push(data.img);
+    m.innerHTML='<p style="margin-top:0">Our volunteers took '+(imgs.length>1?"these photos":"this photo")+' when they called to collect your tree and couldn&#39;t find it.</p><div class="photo"></div><p class="muted">Taken '+when+'.</p><div id="st"></div>';
+    const ph=m.querySelector(".photo"); imgs.forEach((src,i)=>{ const im=document.createElement("img"); im.alt="Photo "+(i+1)+" taken by our collection team"; im.src=src; ph.append(im) });
     stateBox(data.state,data);
   }catch(e){ msg("We couldn't load the photo just now. Please try again in a few minutes.") }
 })();
