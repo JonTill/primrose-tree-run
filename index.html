@@ -113,6 +113,7 @@ footer img{height:26px;width:auto;background:var(--plate);border-radius:4px;padd
 .mbox{background:var(--surface);color:var(--fg);border-radius:14px;padding:18px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
 .mbox p{margin:0}
 .mbox > .field{flex:none}
+.tgrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.3fr);gap:8px 10px;align-items:end;margin-bottom:8px}.tgrid .sep{grid-column:1/-1;height:1px;background:var(--line);margin:4px 0}@media(max-width:620px){.tgrid{grid-template-columns:1fr}.tgrid .sep{display:none}}
 details.hq{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px}details.hq summary{font-weight:700;cursor:pointer}details.hq[open] summary{margin-bottom:6px}details.hq ol,details.hq ul{margin:6px 0 0;padding-left:20px}details.hq li{margin:3px 0}
 .subtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .subtabs button{flex:1 1 140px;font:700 .9rem var(--body);padding:9px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
@@ -556,15 +557,23 @@ function renderAddresses(main){
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
 const VEHICLES=["4x4 & trailer","Pickup truck","Small van","Transit van","Large van / Luton","Primrose provided vehicle","Other"];
+function teamGrid(pre,t,veh){ t=t||{}; const m=(t.members||[]), v=(x,k)=>esc((x||{})[k]||""), ph=!t.name&&pre==="t";
+  const F=(id,label,type,val,extra="")=>`<div class="field"><label for="${pre}-${id}">${label}</label><input id="${pre}-${id}" type="${type}" ${type==="tel"?'inputmode="tel"':""} autocomplete="off" value="${val}" ${extra}></div>`;
+  return `<div class="tgrid">
+   ${F("name","Team name","text",esc(t.name||""),ph?'placeholder="e.g. Rotary Club, Team 4"':"")}
+   ${F("cap","Trees per load","number",esc(t.capacity??(pre==="t"?10:"")),'min="1" max="60" inputmode="numeric"')}
+   <div class="field"><label for="${pre}-vehicle">Vehicle</label><select id="${pre}-vehicle"><option value="">Choose…</option>${veh.map(x=>`<option ${x===t.vehicle?"selected":""}>${esc(x)}</option>`).join("")}</select></div>
+   <div class="sep"></div>
+   ${F("contact","Contact name","text",esc(t.contact||""),ph?'placeholder="e.g. Karen Bannister"':"")}${F("phone","Mobile","tel",esc(t.phone||""),ph?'placeholder="07700 900000"':"")}${F("email","Email","email",esc(t.email||""),ph?'placeholder="name@example.com"':"")}
+   ${F("m2n","Team member 2 (optional)","text",v(m[0],"name"))}${F("m2p","Their mobile","tel",v(m[0],"phone"))}${F("m2e","Their email","email",v(m[0],"email"))}
+   ${F("m3n","Team member 3 (optional)","text",v(m[1],"name"))}${F("m3p","Their mobile","tel",v(m[1],"phone"))}${F("m3e","Their email","email",v(m[1],"email"))}
+  </div>` }
 function editTeam(t,su){   // su = a sign-up being reviewed: Approve adds it as a new team, Decline closes it
   return new Promise(res=>{
     const s0=(t.slots||[])[0]||{}, days=new Set((t.slots||[]).map(x=>x.day)), veh=VEHICLES.includes(t.vehicle)||!t.vehicle?VEHICLES:[...VEHICLES,t.vehicle];
     const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
-    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:520px"><h2>${su?"Review sign-up":"Edit "+esc(t.name)}</h2>${su?`<div class="hint" style="margin-bottom:8px">Sent ${esc(tm(su.submittedAt))} from the sign-up link. Check it and change anything you need, then approve or decline.</div>`:""}
-     <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-name">Team name</label><input id="et-name" type="text" value="${esc(t.name)}"></div><div class="field" style="flex:0 1 110px"><label for="et-cap">Start trees per load</label><input id="et-cap" type="number" min="1" max="60" value="${esc(t.capacity)}"></div></div>
-     <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-contact">Contact name</label><input id="et-contact" type="text" value="${esc(t.contact||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-phone">Phone</label><input id="et-phone" type="tel" inputmode="tel" value="${esc(t.phone||"")}"></div></div>
-     <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m2n">Team member 2 (optional)</label><input id="et-m2n" type="text" autocomplete="off" value="${esc((((t).members||[])[0]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m2p">Their phone</label><input id="et-m2p" type="tel" inputmode="tel" value="${esc((((t).members||[])[0]||{}).phone||"")}"></div><div class="field" style="flex:2 1 180px"><label for="et-m2e">Their email</label><input id="et-m2e" type="email" value="${esc((((t).members||[])[0]||{}).email||"")}"></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m3n">Team member 3 (optional)</label><input id="et-m3n" type="text" autocomplete="off" value="${esc((((t).members||[])[1]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m3p">Their phone</label><input id="et-m3p" type="tel" inputmode="tel" value="${esc((((t).members||[])[1]||{}).phone||"")}"></div><div class="field" style="flex:2 1 180px"><label for="et-m3e">Their email</label><input id="et-m3e" type="email" value="${esc((((t).members||[])[1]||{}).email||"")}"></div></div>
-     <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-email">Email</label><input id="et-email" type="email" value="${esc(t.email||"")}"></div><div class="field" style="flex:1 1 170px"><label for="et-vehicle">Vehicle</label><select id="et-vehicle"><option value="">Choose…</option>${veh.map(v=>`<option ${v===t.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div></div>
+    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:720px"><h2>${su?"Review sign-up":"Edit "+esc(t.name)}</h2>${su?`<div class="hint" style="margin-bottom:8px">Sent ${esc(tm(su.submittedAt))} from the sign-up link. Check it and change anything you need, then approve or decline.</div>`:""}
+     ${teamGrid("et",t,veh)}
      <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("et",t)}</div>
      <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" maxlength="300" value="${esc(t.notes||"")}"></div>
      <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-large" ${t.large?"checked":""}> Can take large trees</label>
@@ -856,11 +865,7 @@ function renderTeams(main){
   const all=[...teams.values()].sort((a,b)=>a.name.localeCompare(b.name));
   const dis=canWrite?"":"disabled";
   main.innerHTML=`${signupCard(dis)}<div class="card" style="margin-top:10px"><h2>Add a team</h2>
-   <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
-   <div class="field" style="flex:0 1 110px"><label for="t-cap">Start trees per load</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
-   </div>
-   <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-contact">Contact name</label><input id="t-contact" type="text" autocomplete="off" placeholder="e.g. Karen Bannister"></div><div class="field" style="flex:1 1 140px"><label for="t-phone">Phone</label><input id="t-phone" type="tel" inputmode="tel" placeholder="07700 900000"></div><div class="field" style="flex:2 1 200px"><label for="t-email">Email</label><input id="t-email" type="email" placeholder="name@example.com"></div><div class="field" style="flex:1 1 170px"><label for="t-vehicle">Vehicle</label><select id="t-vehicle"><option value="">Choose…</option>${VEHICLES.map(v=>`<option>${esc(v)}</option>`).join("")}</select></div></div>
-   <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m2n">Team member 2 (optional)</label><input id="t-m2n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m2p">Their phone</label><input id="t-m2p" type="tel" inputmode="tel" value=""></div><div class="field" style="flex:2 1 180px"><label for="t-m2e">Their email</label><input id="t-m2e" type="email" value=""></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m3n">Team member 3 (optional)</label><input id="t-m3n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m3p">Their phone</label><input id="t-m3p" type="tel" inputmode="tel" value=""></div><div class="field" style="flex:2 1 180px"><label for="t-m3e">Their email</label><input id="t-m3e" type="email" value=""></div></div>
+   ${teamGrid("t",null,VEHICLES)}
    <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("t",null)}</div>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
