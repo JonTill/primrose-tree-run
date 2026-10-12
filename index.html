@@ -650,7 +650,7 @@ function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==fals
 const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"driver.html").replace(/driver\.html$/,"team.html");
 const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
 const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,"");
-function teamLinkCell(t,dis){ if(!t.teamToken) return `<button class="btn ghost tsm" data-mklink="${esc(t.id)}" ${dis}>Create link</button>`;
+function teamLinkCell(t,dis){ if(!t.teamToken) return `<div class="tbtns"><button class="btn tsm" data-mklink="${esc(t.id)}" ${dis}>Create Link</button><button class="btn tsm ${t.paused?"":"ghost"}" data-pause="${esc(t.id)}" ${dis} ${t.paused?'style="background:var(--bad);border-color:var(--bad);color:#fff" title="Tap to resume jobs"':""}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" disabled title="No link yet">Reset Link</button><button class="btn tsm" data-tmail="${esc(t.id)}" ${dis} title="${t.email?"Creates the link and emails it to "+esc(t.email):"No email address for this team"}">Email Link</button></div>`;
   return `<div class="tbtns"><button class="btn tsm" data-cplink="${esc(t.id)}">Copy Link</button><button class="btn tsm ${t.paused?"":"ghost"}" data-pause="${esc(t.id)}" ${dis} ${t.paused?'style="background:var(--bad);border-color:var(--bad);color:#fff" title="Tap to resume jobs"':""}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>Reset Link</button><button class="btn tsm ${t.linkEmailedAt?"ghost":""}" data-tmail="${esc(t.id)}" ${dis} title="${t.linkEmailedAt?"Emailed "+esc(tm(t.linkEmailedAt)):(t.email?"Email the link to "+esc(t.email):"No email address for this team")}">${t.linkEmailedAt?"Email Again":"Email Link"}</button></div>` }
 function teamLinkEmail(t){ const link=teamLink(t), off=officeNo();
   const lines=[`Hello ${t.contact||t.name},`,"",`Thank you for helping with Primrose Hospice TreeCycle 2027. Here is your team's link for the collection weekend (Friday 8 to Sunday 10 January):`,"",link,"",
@@ -661,7 +661,7 @@ function teamLinkEmail(t){ const link=teamLink(t), off=officeNo();
     body:lines.map(l=>l===link?`<p><a href="${esc(link)}"><b>Open your team page</b></a><br>${esc(link)}</p>`:l?`<p>${esc(l)}</p>`:"").join("")} }
 async function emailTeamLink(t){
   if(!t.email){toast(`No email address for ${t.name}. Add one with Edit.`);return false}
-  if(!teamLink(t)){toast("Create the link first");return false}
+  if(!teamLink(t)){ const tok=newTeamToken(); if(!await patch("teams/"+t.id,{teamToken:tok,teamTokenAt:new Date().toISOString()})) return false; t={...t,teamToken:tok} }
   const em=teamLinkEmail(t), mark=()=>patch("teams/"+t.id,{linkEmailedAt:new Date().toISOString(),linkEmailedTo:t.email});
   const to=[t.email,...(t.members||[]).map(m=>m.email).filter(Boolean)];
   if(MAILTO){ if(!await openMail({to,subject:em.subject,text:em.text})) return false; await mark(); toast(MAIL_TOAST); return true }
