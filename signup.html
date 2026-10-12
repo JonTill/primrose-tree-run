@@ -52,7 +52,7 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
     <label class="f">Their email<input type="email" id="m3e" maxlength="120"></label>
     <h2 style="margin-top:6px">Your vehicle</h2>
     <div class="two"><label class="f">Vehicle *<select id="vehicle"><option value="">Choose…</option><option>4x4 &amp; trailer</option><option>Pickup truck</option><option>Small van</option><option>Transit van</option><option>Large van / Luton</option><option>Primrose provided vehicle</option><option>Other</option></select></label>
-    <label class="f">About how many trees per load? *<input type="number" id="capacity" min="1" max="60" inputmode="numeric" placeholder="e.g. 10"></label></div>
+    <label class="f">About how many trees per load? *<input type="number" id="capacity" min="8" max="25" inputmode="numeric" placeholder="8 to 25"></label></div>
     <label class="chk"><input type="checkbox" id="large"> We can take large trees (over 8ft)</label>
     <h2 style="margin-top:6px">When you can help *</h2>
     <p class="muted" style="margin-top:0">Tick each day you can come and set your times. They can be different each day.</p>
@@ -75,13 +75,13 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
   $("vehicle").addEventListener("change",e=>{ if(/Transit|trailer|Luton/i.test(e.target.value)) $("large").checked=true });
   let sb=null; try{ const c=window.TREERUN_CONFIG; sb=supabase.createClient(c.url,c.anonKey,{auth:{persistSession:false}}) }catch(e){}
   const emOK=v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
-  const MSG={closed:"Sign-ups have closed. Please contact the Primrose Hospice fundraising team.",name:"Please enter a team name and your name.",phone:"Please enter a mobile number we can call on the day.",email:"Please check your email address.",vehicle:"Please choose your vehicle.",capacity:"Please say about how many trees fit in one load (1 to 60).",times:"Please tick at least one day, with a finish time after the start time.",consent:"Please tick the box to say we can keep your details.",busy:"Lots of people are signing up right now. Please try again in a few minutes.",already:"We've just had a sign-up from this email address. If you need to change anything, reply to the email we send you."};
+  const MSG={closed:"Sign-ups have closed. Please contact the Primrose Hospice fundraising team.",name:"Please enter a team name and your name.",phone:"Please enter a mobile number we can call on the day.",email:"Please check your email address.",vehicle:"Please choose your vehicle.",capacity:"Please say about how many trees fit in one load (8 to 25).",times:"Please tick at least one day, with a finish time after the start time.",consent:"Please tick the box to say we can keep your details.",busy:"Lots of people are signing up right now. Please try again in a few minutes.",already:"We've just had a sign-up from this email address. If you need to change anything, reply to the email we send you."};
   $("f").addEventListener("submit",async e=>{ e.preventDefault(); err.textContent="";
     const v=id=>$(id).value.trim();
     const slots=DAYS.filter(([k])=>$("d-"+k).checked).map(([k])=>({day:k,from:$("f-"+k).value,to:$("t-"+k).value}));
     const p={name:v("name"),contact:v("contact"),phone:v("phone"),email:v("email"),vehicle:$("vehicle").value,capacity:v("capacity"),large:$("large").checked,slots,
       members:[2,3].map(n=>({name:v("m"+n+"n"),phone:v("m"+n+"p"),email:v("m"+n+"e")})).filter(m=>m.name),notes:v("notes"),consent:$("consent").checked};
-    const bad=p.name.length<2||p.contact.length<2?"name":p.phone.replace(/\D/g,"").length<10?"phone":!emOK(p.email)?"email":!p.vehicle?"vehicle":!(+p.capacity>=1&&+p.capacity<=60)?"capacity":!slots.length||slots.some(s=>!s.from||!s.to||s.to<=s.from)?"times":!p.consent?"consent":"";
+    const bad=p.name.length<2||p.contact.length<2?"name":p.phone.replace(/\D/g,"").length<10?"phone":!emOK(p.email)?"email":!p.vehicle?"vehicle":!(+p.capacity>=8&&+p.capacity<=25)?"capacity":!slots.length||slots.some(s=>!s.from||!s.to||s.to<=s.from)?"times":!p.consent?"consent":"";
     if(bad){ err.textContent=MSG[bad]; return }
     if(!sb){ err.textContent="The form couldn't connect. Please check your signal and try again."; return }
     const b=$("go"); b.disabled=true; b.textContent="Sending…";
