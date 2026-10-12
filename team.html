@@ -219,6 +219,7 @@ async function load(withPos){
   const d=await rpc("team_get",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null,p_acc:p?.acc??null},true);
   if(my!==loadSeq) return;
   if(!d){ if(!data){ $("#sub").textContent=""; $("#main").innerHTML=`<div class="empty">Couldn't load your team page. Check your signal and tap Try again. If it keeps happening, call the office.</div><button class="btn" onclick="load()">Try again</button>` } return }
+  if(d.error==="not_found"){ const s=await rpc("signup_status",{p_token:teamToken},true); if(my!==loadSeq) return; if(s&&(s.state==="pending"||s.state==="declined")) d.error=s.state, d.name=s.name }   // a sign-up link that hasn't been approved yet
   data=d; token=d.run?.token||""; render();
   } finally { loading=false; if(loadAgain!==null){ const w=loadAgain; loadAgain=null; setTimeout(()=>load(w),0) } }
   if(!role&&data&&!data.error&&!rolePick.open){ rolePick.open=true; const v=await rolePick(); rolePick.open=false; setRole(v) } }
@@ -235,6 +236,8 @@ function progBlock(){ const p=data.report||{}, done=+p.eventTrees||0, left=+p.ev
 function statBlock(){ const p=data.report||{}; return `<div class="stat"><div><b>${p.todayTrees||0}</b><span>Trees today</span></div><div><b>${p.todayRuns||0}</b><span>Runs today</span></div><div><b>${p.allTrees||0}</b><span>All weekend</span></div></div>` }
 function render(){
   const m=$("#main"); if(!data){m.innerHTML="";return}
+  if(data.error==="pending"){ $("#title").textContent=data.name||"Your team"; $("#sub").textContent="Waiting for approval"; m.innerHTML=`<div class="endp"><h2>Thanks for signing up!</h2><div class="sub">The office hasn't approved your sign-up yet. Keep this link: once you're approved, this page becomes your team's page for the collection weekend (Friday 8 to Sunday 10 January).</div><div class="sub">Tip: add it to your home screen or bookmark it so it's easy to find.</div><button class="btn" onclick="load()">Check again</button></div>`; return }
+  if(data.error==="declined"){ $("#title").textContent=data.name||"Your team"; $("#sub").textContent=""; m.innerHTML=`<div class="empty">Thank you for offering to help. The office doesn't need this team this time. If you think that's a mistake, please contact Primrose Hospice.</div>`; return }
   if(data.error){ $("#sub").textContent=""; m.innerHTML=`<div class="empty">This link isn't valid. Ask the office for your team's link.</div>`; return }
   const t=data.team, r=data.run, ph=(view==="gohome"&&phase()==="done")?"home":phase(), call=data.office?`<a class="btn ghost" href="tel:${esc(data.office.replace(/\s/g,""))}">Call office ${esc(data.office)}</a>`:"";
   $("#title").textContent=t.name; document.title=t.name+" · TreeCycle 2027";
