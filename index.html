@@ -224,10 +224,10 @@ function renderTally(){
 const tooBig=s=>s.status===""&&s.skipReason==="Tree too big"&&!!s.skippedRun&&!outArea(s);
 const refundDue=s=>s.customerReply==="refund"&&!s.refundDoneAt;
 const addrNew=s=>!!s.addrChangedAt&&!s.addrAckAt;
-function missCount(){let n=newSignups().length;for(const s of stops.values()) if(s.status==="Missed"||outArea(s)||tooBig(s)||refundDue(s)||addrNew(s)) n++;return n}
+function missCount(){let n=0;for(const s of stops.values()) if(s.status==="Missed"||outArea(s)||tooBig(s)||refundDue(s)||addrNew(s)) n++;return n}
 function renderTabs(){
   const m=missCount();
-  $("#tabs").innerHTML=TABS.map(([k,l])=>`<button id="tab-${k}" data-tab="${k}" aria-pressed="${view.tab===k}">${l}${k==="misses"&&m?`<span class="n">${m}</span>`:""}</button>`).join("");
+  $("#tabs").innerHTML=TABS.map(([k,l])=>`<button id="tab-${k}" data-tab="${k}" aria-pressed="${view.tab===k}">${l}${k==="misses"&&m?`<span class="n">${m}</span>`:""}${k==="teams"&&newSignups().length?`<span class="n">${newSignups().length}</span>`:""}</button>`).join("");
 }
 
 /* ---------- teams & availability ---------- */
@@ -475,7 +475,6 @@ function renderMisses(main){
   <h3 style="color:var(--bad)">Missed (${ms.length})</h3><div class="hint" style="margin-bottom:8px">First miss: email the customer. Each customer gets their own email with a link to tell us the tree is out (it goes straight back on the list) or not needed (it closes), plus the driver's photo if there is one. They can also reply to the email${MAILTO?": replies come to your inbox, so tap <b>Customer replied</b> on the card when one arrives":""}. ${MAILTO?"The emails open one after another in your own email program: press Send, then <b>I've sent it</b> for the next. ":""}One rebook only. A second miss gets a final email and the stop is closed.</div>
   <div class="row" style="margin-bottom:8px"><button class="btn bad" data-emailall ${dis||(!toEmail.length?"disabled":"")}>Email ${toEmailN} missed customer${toEmailN===1?"":"s"}</button><button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>
   ${ms.length?`<div class="list">${ms.map(missCard).join("")}</div>`:`<div class="empty">No missed trees.</div>`}
-  ${signupApprovals()}
   ${(()=>{ const all=[...stops.values()], rf=all.filter(refundDue), ac=all.filter(addrNew), don=all.filter(s=>s.customerReply==="donate"), rdone=all.filter(s=>s.customerReply==="refund"&&s.refundDoneAt);
     const sum=l=>l.reduce((a,s)=>a+(+s.paid||0),0), unk=l=>l.filter(s=>!money(s.paid)).length;
     let h="";
@@ -557,22 +556,23 @@ function renderAddresses(main){
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
 const VEHICLES=["4x4 & trailer","Pickup truck","Small van","Transit van","Large van / Luton","Other"];
-function editTeam(t){
+function editTeam(t,su){   // su = a sign-up being reviewed: Approve adds it as a new team, Decline closes it
   return new Promise(res=>{
     const s0=(t.slots||[])[0]||{}, days=new Set((t.slots||[]).map(x=>x.day)), veh=VEHICLES.includes(t.vehicle)||!t.vehicle?VEHICLES:[...VEHICLES,t.vehicle];
     const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
-    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:520px"><h2>Edit ${esc(t.name)}</h2>
+    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:520px"><h2>${su?"Review sign-up":"Edit "+esc(t.name)}</h2>${su?`<div class="hint" style="margin-bottom:8px">Sent ${esc(tm(su.submittedAt))} from the sign-up link. Check it and change anything you need, then approve or decline.</div>`:""}
      <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-name">Team name</label><input id="et-name" type="text" value="${esc(t.name)}"></div><div class="field" style="flex:0 1 110px"><label for="et-cap">Start trees per load</label><input id="et-cap" type="number" min="1" max="60" value="${esc(t.capacity)}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-contact">Contact name</label><input id="et-contact" type="text" value="${esc(t.contact||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-phone">Phone</label><input id="et-phone" type="tel" inputmode="tel" value="${esc(t.phone||"")}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m2n">Team member 2 (optional)</label><input id="et-m2n" type="text" autocomplete="off" value="${esc((((t).members||[])[0]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m2p">Their phone</label><input id="et-m2p" type="tel" inputmode="tel" value="${esc((((t).members||[])[0]||{}).phone||"")}"></div><div class="field" style="flex:2 1 180px"><label for="et-m2e">Their email</label><input id="et-m2e" type="email" value="${esc((((t).members||[])[0]||{}).email||"")}"></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m3n">Team member 3 (optional)</label><input id="et-m3n" type="text" autocomplete="off" value="${esc((((t).members||[])[1]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m3p">Their phone</label><input id="et-m3p" type="tel" inputmode="tel" value="${esc((((t).members||[])[1]||{}).phone||"")}"></div><div class="field" style="flex:2 1 180px"><label for="et-m3e">Their email</label><input id="et-m3e" type="email" value="${esc((((t).members||[])[1]||{}).email||"")}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-email">Email</label><input id="et-email" type="email" value="${esc(t.email||"")}"></div><div class="field" style="flex:1 1 170px"><label for="et-vehicle">Vehicle</label><select id="et-vehicle"><option value="">Choose…</option>${veh.map(v=>`<option ${v===t.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div></div>
      <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("et",t)}</div>
-     <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" value="${esc(t.notes||"")}"></div>
+     <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" maxlength="300" value="${esc(t.notes||"")}"></div>
      <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-large" ${t.large?"checked":""}> Can take large trees</label>
-     <div class="row" style="justify-content:flex-end">${[...runs.values()].some(r=>r.teamId===t.id)?"":`<button class="btn ghost" data-m="del" style="color:var(--bad);border-color:var(--bad);margin-right:auto">Remove team</button>`}<button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Save</button></div>${[...runs.values()].some(r=>r.teamId===t.id)?`<div class="hint">This team has done runs, so it can't be removed.</div>`:""}</div>`;
+     <div class="row" style="justify-content:flex-end">${su?`<button class="btn ghost" data-m="decl" style="color:var(--bad);border-color:var(--bad);margin-right:auto">Decline</button><button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Approve &amp; add team</button></div>`:`${[...runs.values()].some(r=>r.teamId===t.id)?"":`<button class="btn ghost" data-m="del" style="color:var(--bad);border-color:var(--bad);margin-right:auto">Remove team</button>`}<button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Save</button></div>${[...runs.values()].some(r=>r.teamId===t.id)?`<div class="hint">This team has done runs, so it can't be removed.</div>`:""}`}</div>`;
     const close=v=>{d.remove();document.removeEventListener("keydown",kd,true);res(v)}; const kd=e=>{if(e.key==="Escape"){e.stopPropagation();close(false)}};
     d.querySelector("#et-vehicle").addEventListener("change",e=>{ if(/Transit|trailer|Luton/i.test(e.target.value)) d.querySelector("#et-large").checked=true });
     d.addEventListener("click",async e=>{ e.stopPropagation(); const b=e.target.closest("[data-m]"); if(!b) return; if(b.dataset.m==="0") return close(false);
+      if(b.dataset.m==="decl"){ close(false); if(!await confirmBox("Decline sign-up?",`${su.name} won't be added as a team.`,"Decline")) return; if(await patch("signups/"+su.id,{status:"declined",doneAt:new Date().toISOString(),doneBy:me})) toast(`${su.name} declined`); return }
       if(b.dataset.m==="del"){ close(false); if(!await confirmBox("Remove team?",`${t.name} will be deleted, along with their team link.`,"Remove team")) return; try{ await db.doc("teams/"+t.id).delete(); toast("Team removed") }catch(err){ fail(err) } return }
       const q=id=>d.querySelector(id), name=q("#et-name").value.trim(), cap=parseInt(q("#et-cap").value,10), contact=q("#et-contact").value.trim(), email=q("#et-email").value.trim(), vehicle=q("#et-vehicle").value;
       const phone=(p=>{const x=p.replace(/[^\d+]/g,""); return /^0\d{10}$/.test(x)?x.slice(0,5)+" "+x.slice(5):p})(q("#et-phone").value.trim());
@@ -581,7 +581,10 @@ function editTeam(t){
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("That email address doesn't look right");return}
       const slots=readSlots("et",d); if(!slots) return;
       b.disabled=true;
-      const ok=await patch("teams/"+t.id,{name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,200),large:q("#et-large").checked,members:mem("et")});
+      const vals={name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,300),large:q("#et-large").checked,members:mem("et")};
+      if(su){ const id="t"+Date.now().toString(36); const ok=await put("teams/"+id,{id,...vals,signupId:su.id});
+        if(ok){ await patch("signups/"+su.id,{status:"added",teamId:id,doneAt:new Date().toISOString(),doneBy:me}); toast(`${vals.name} approved and added`); close(true) } else b.disabled=false; return }
+      const ok=await patch("teams/"+t.id,vals);
       if(ok&&name!==t.name){ for(const r of runs.values()) if(r.teamId===t.id&&r.state==="out") await patch("runs/"+r.id,{team:name.slice(0,60)}) }
       b.disabled=false; if(ok) close(true) });
     document.addEventListener("keydown",kd,true); document.body.appendChild(d); d.querySelector("#et-name").focus();
@@ -627,14 +630,13 @@ function editStop(s){
 const newSignups=()=>[...signups.values()].filter(s=>s.status==="new").sort((a,b)=>String(a.submittedAt).localeCompare(String(b.submittedAt)));
 const SIGNUP_URL=()=>location.href.split("#")[0].replace(/[^/]*$/,"")+"signup.html";
 function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==false;
-  return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. New sign-ups appear on <b>Needs attention</b> for you to approve; approved ones are added here, then create and email their team link as usual.${ns.length?` <b>${ns.length} waiting for approval.</b>`:""}${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
-   <div class="row" style="margin-top:8px"><button class="btn" data-cpsignup>Copy sign-up link</button><button class="btn ghost" data-suopen="${open?"0":"1"}" ${dis}>${open?"Close sign-ups":"Open sign-ups"}</button></div></div>` }
-function signupApprovals(){ const ns=newSignups(), dis=canWrite?"":"disabled"; if(!ns.length) return "";
   const slot=s=>(s.slots||[]).map(x=>`${DAY_LABEL[x.day]||x.day} ${x.from}–${x.to}`).join(", ");
-  return `<h3 style="color:var(--bad)">Team sign-ups to approve (${ns.length})</h3><div class="hint" style="margin-bottom:8px">From the sign-up link. <b>Approve</b> adds the team to the Teams tab (you can still edit it there); then create and email their team link. <b>Decline</b> if they're not needed or it's a duplicate.</div>
-   <div class="list">${ns.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.capacity} trees per load</b><span class="chip warn">Sent ${esc(tm(s.submittedAt))}</span></div>
-     <div class="hint">${esc(s.contact)} · ${esc(s.phone)} · ${esc(s.email)}${(s.members||[]).length?"<br>Also: "+s.members.map(m=>esc(m.name)+(m.phone||m.email?" ("+[m.phone,m.email].filter(Boolean).map(esc).join(" · ")+")":"")).join(", "):""}<br>${esc(s.vehicle)}${s.large?" · Can take large trees":""}<br>Times: ${esc(slot(s))}${s.notes?"<br>Note: "+esc(s.notes):""}</div>
-     <div class="steps"><button class="btn" data-suadd="${esc(s.id)}" ${dis}>Approve</button><button class="btn ghost" data-sudecl="${esc(s.id)}" ${dis}>Decline</button></div></div>`).join("")}</div>` }
+  return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. Each sign-up waits below until you review it: tap <b>Review</b>, check or change the details, then approve (it's added to the teams list) or decline.${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
+   <div class="row" style="margin-top:8px"><button class="btn" data-cpsignup>Copy sign-up link</button><button class="btn ghost" data-suopen="${open?"0":"1"}" ${dis}>${open?"Close sign-ups":"Open sign-ups"}</button></div>
+   <h3 style="${ns.length?"color:var(--bad)":""}">Sign-ups to approve (${ns.length})</h3>
+   ${ns.length?`<div class="list">${ns.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.capacity} trees per load</b><span class="chip warn">Sent ${esc(tm(s.submittedAt))}</span></div>
+     <div class="hint">${esc(s.contact)} · ${esc(s.phone)} · ${esc(s.email)}<br>${esc(s.vehicle)}${s.large?" · Can take large trees":""} · ${esc(slot(s))}</div>
+     <div class="steps"><button class="btn" data-sureview="${esc(s.id)}" ${dis}>Review</button></div></div>`).join("")}</div>`:`<div class="hint">No sign-ups waiting.</div>`}</div>` }
 const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"driver.html").replace(/driver\.html$/,"team.html");
 const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
 const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,"");
@@ -1052,6 +1054,7 @@ async function act(b,d){
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
   if("cpsignup" in d){ const ok=await copyText(SIGNUP_URL()); if(ok) toast("Sign-up link copied"); else if(ok===false) toast("Couldn't copy"); return }
   if(d.suopen){ if(await patch("settings/main",{signupOpen:d.suopen==="1"})) toast(d.suopen==="1"?"Sign-ups open":"Sign-ups closed"); return }
+  if(d.sureview){ const s=signups.get(d.sureview); if(!s||s.status!=="new") return; await editTeam({name:s.name,capacity:s.capacity,contact:s.contact,phone:s.phone,email:s.email,vehicle:s.vehicle,slots:s.slots||[],large:!!s.large,members:s.members||[],notes:s.notes||""},s); return }
   if(d.sudecl){ const s=signups.get(d.sudecl); if(!s) return; if(!await confirmBox("Decline sign-up?",`${s.name} won't be added as a team.`,"Decline")) return; if(await patch("signups/"+s.id,{status:"declined",doneAt:new Date().toISOString(),doneBy:me})) toast(`${s.name} declined`); return }
   if(d.suadd){ const s=signups.get(d.suadd); if(!s) return; const id="t"+Date.now().toString(36);
     if(!await put("teams/"+id,{id,name:String(s.name).slice(0,60),capacity:Math.min(+s.capacity||10,60),contact:s.contact,phone:s.phone,email:s.email,vehicle:s.vehicle,slots:s.slots||[],large:!!s.large,members:(s.members||[]).slice(0,2),notes:s.notes||"",signupId:s.id})) return;
