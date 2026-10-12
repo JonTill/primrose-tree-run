@@ -128,7 +128,7 @@ function endStage(r,got,missed,skipped,callBtn){
       ${p.allTrees>p.todayTrees?`<div class="sm">This weekend so far: <b>${p.allTrees} trees</b> on ${p.allRuns} runs</div>`:""}
       ${p.eventTrees?`<div class="sm">Everyone together: <b>${p.eventTrees} trees</b> collected so far</div>`:""}
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>
-      <div class="bar">${data.teamLink?`<a class="btn blue" href="team.html#${esc(data.teamLink)}">Home page</a>`:""}<button class="btn ghost" data-showlist>See this run's stops</button>${callBtn}</div>`; }
+      <div class="bar">${data.teamLink?`<a class="btn blue" href="team.html#${esc(data.teamLink)}" onclick="try{sessionStorage.setItem('tr-gohome','1')}catch(_){}">Home page</a>`:""}<button class="btn ghost" data-showlist>See this run's stops</button>${callBtn}</div>`; }
   const dp=dpOf(r);
   if(!r.unloadedAt&&!r.arrivedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}.</div><div class="clbl">Drop-off point</div><div class="q1">${esc(dp.name)}</div><div class="ad1">${esc(dp.full)}</div>${dp.hours||dp.notes?`<div class="in1">${esc([dp.hours,dp.notes].filter(Boolean).join(" · "))}</div>`:""}
       <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Navigate to Drop Off</a><button class="btn blue" data-arrived>Arrived at ${esc(dp.name)}</button>${otherDrops(dp)}</div><div class="bar">${callBtn}</div>`;
