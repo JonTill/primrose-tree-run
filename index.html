@@ -573,7 +573,7 @@ function editTeam(t,su){   // su = a sign-up being reviewed: Approve adds it as 
   return new Promise(res=>{
     const s0=(t.slots||[])[0]||{}, days=new Set((t.slots||[]).map(x=>x.day)), veh=VEHICLES.includes(t.vehicle)||!t.vehicle?VEHICLES:[...VEHICLES,t.vehicle];
     const d=document.createElement("div"); d.className="modal"; d.setAttribute("role","dialog"); d.setAttribute("aria-modal","true");
-    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:720px"><h2>${su?"Review sign-up":"Edit "+esc(t.name)}</h2>${su?`<div class="hint" style="margin-bottom:8px">Sent ${esc(tm(su.submittedAt))} from the sign-up link. Check it and change anything you need, then approve or decline.</div>`:""}
+    d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:720px"><h2>${su?"Review sign-up":"Edit "+esc(t.name)}</h2>${su?`<div class="hint" style="margin-bottom:8px">Sent ${esc(tm(su.submittedAt))} from the sign-up link. Check it and change anything you need, then approve or decline.${su.teamToken?" They already have their team link from signing up: approving switches it on.":""}</div>`:""}
      ${teamGrid("et",t,veh)}
      <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("et",t)}</div>
      <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" maxlength="300" value="${esc(t.notes||"")}"></div>
@@ -592,8 +592,8 @@ function editTeam(t,su){   // su = a sign-up being reviewed: Approve adds it as 
       const slots=readSlots("et",d); if(!slots) return;
       b.disabled=true;
       const vals={name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,300),large:q("#et-large").checked,members:mem("et")};
-      if(su){ const id="t"+Date.now().toString(36); const ok=await put("teams/"+id,{id,...vals,signupId:su.id});
-        if(ok){ await patch("signups/"+su.id,{status:"added",teamId:id,doneAt:new Date().toISOString(),doneBy:me}); toast(`${vals.name} approved and added`); close(true) } else b.disabled=false; return }
+      if(su){ const id="t"+Date.now().toString(36); const ok=await put("teams/"+id,{id,...vals,signupId:su.id,...(su.teamToken?{teamToken:su.teamToken,teamTokenAt:new Date().toISOString()}:{})});
+        if(ok){ await patch("signups/"+su.id,{status:"added",teamId:id,doneAt:new Date().toISOString(),doneBy:me}); toast(su.teamToken?`${vals.name} approved. Their sign-up link is now their team link.`:`${vals.name} approved and added`); close(true) } else b.disabled=false; return }
       const ok=await patch("teams/"+t.id,vals);
       if(ok&&name!==t.name){ for(const r of runs.values()) if(r.teamId===t.id&&r.state==="out") await patch("runs/"+r.id,{team:name.slice(0,60)}) }
       b.disabled=false; if(ok) close(true) });
@@ -641,7 +641,7 @@ const newSignups=()=>[...signups.values()].filter(s=>s.status==="new").sort((a,b
 const SIGNUP_URL=()=>location.href.split("#")[0].replace(/[^/]*$/,"")+"signup.html";
 function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==false;
   const slot=s=>(s.slots||[]).map(x=>`${DAY_LABEL[x.day]||x.day} ${x.from}–${x.to}`).join(", ");
-  return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. Each sign-up waits below until you review it: tap <b>Review</b>, check or change the details, then approve (it's added to the teams list) or decline.${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
+  return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. Each sign-up waits below until you review it: tap <b>Review</b>, check or change the details, then approve (it's added to the teams list) or decline. Each volunteer gets their team link as soon as they sign up; it shows "waiting for approval" until you approve them, then it works as their team page.${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
    <div class="row" style="margin-top:8px"><button class="btn" data-cpsignup>Copy sign-up link</button><button class="btn ghost" data-suopen="${open?"0":"1"}" ${dis}>${open?"Close sign-ups":"Open sign-ups"}</button></div>
    <h3 style="${ns.length?"color:var(--bad)":""}">Sign-ups to approve (${ns.length})</h3>
    ${ns.length?`<div class="list">${ns.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.capacity} trees per load</b><span class="chip warn">Sent ${esc(tm(s.submittedAt))}</span></div>
