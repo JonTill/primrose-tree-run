@@ -86,7 +86,7 @@ const DEPOT="Primrose Hospice, St Godwalds Road, Bromsgrove B60 3BW";
 let token=(location.hash||"").replace(/^#/,"").trim();
 const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const short=a=>String(a||"").replace(/, Worcestershire$/,"");
-let data=null, busy=false, pend=null;
+let data=null, busy=false, pend=null, showList=false;
 function toast(t){const e=$("#toast");e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2200)}
 const q=s=>encodeURIComponent(short(s.address)+", "+s.postcode);
 function routeLinks(list,here){const out=[];for(let i=0;i<list.length;i+=9){const part=list.slice(i,i+9);const start=i===0?(here?"":DEPOT):short(list[i-1].address)+", "+list[i-1].postcode;
@@ -102,10 +102,10 @@ function render(){
   $("#sub").innerHTML=`${mine.length} stops · ${r.trees} trees${r.state!=="out"?' · <span class="chip">Finished</span>':""}${r.auto?' · <span class="chip ex">Your new run</span>':""}`;
   const callBtn=data.office?`<a class="btn ghost" href="tel:${esc(data.office.replace(/\s/g,""))}">Call office ${esc(data.office)}</a>`:"";
   $("#howto").hidden=!live;
-  if(!live){ m.innerHTML=endStage(r,got,missed,skipped,callBtn); return }
+  if(!live&&!showList){ m.innerHTML=endStage(r,got,missed,skipped,callBtn); return }
   const marked=mine.some(s=>s.status==="Collected"||s.status==="Missed"), todo=mine.filter(s=>s.status==="out");
   const links=routeLinks(marked?todo:mine.filter(s=>s.status!=="Skipped"),marked);
-  m.innerHTML=`<div class="bar">${links.map((u,i)=>`<a class="btn" href="${u}" target="_blank" rel="noopener">${links.length>1?`Route part ${i+1}`:marked?"Route from here in Maps":"Open route in Maps"}</a>`).join("")}${callBtn}</div>
+  m.innerHTML=`<div class="bar">${!live?`<button class="btn blue" data-summary>Back</button>`:""}${(live?links:[]).map((u,i)=>`<a class="btn" href="${u}" target="_blank" rel="noopener">${links.length>1?`Route part ${i+1}`:marked?"Route from here in Maps":"Open route in Maps"}</a>`).join("")}${callBtn}</div>
    <div class="prog">${got} collected · ${missed} missed${skipped?` · ${skipped} skipped`:""} · ${left} to go</div>
    <div class="prog">${totLine(mine.reduce((t,s)=>t+(s.status==="Collected"?(+s.trees||1):0),0))}</div>
    ${list.map((s,i)=>`<div class="stop ${s.status==="Missed"?"m":s.status==="Collected"?"c":s.status==="Skipped"?"s":""} ${s.status==="moved"?"d":""}">
@@ -117,7 +117,7 @@ function render(){
        <button class="got ${s.status==="Collected"?"on":""} ${pend&&pend.ref===s.ref&&pend.b==="Collected"?"sel":""}" data-ref="${s.ref}" data-v="Collected" ${live?"":"disabled"}>Collected</button>
        <button class="miss ${s.status==="Missed"||s.status==="Skipped"?"on":""}" data-ref="${s.ref}" data-v="Not" ${live?"":"disabled"}>Not collected</button>${pend&&pend.ref===s.ref?`<div class="cfmrow"><button class="btn${pend.v==="Missed"?" bad":""}" data-cfm>Confirm: ${pend.v==="out"?"undo":pend.v==="Collected"?"Collected":"Missed"}</button><button class="btn ghost" data-cx>Cancel</button></div>`:""}</div>${s.status==="Skipped"?`<div class="info">Skipped${s.skipReason?": "+esc(s.skipReason):""}. Back on the to-do list for ${s.skipReason==="Tree too big"?"a large-tree team":"another team"}.</div>`:""}${(s.status==="Missed"||(s.status==="Skipped"&&s.skipReason==="Tree too big"))?(s.photo?'<div class="phok">Photo added</div>':live?`<div class="acts"><button class="addph" data-addphoto="${s.ref}">Add photo</button></div>`:""):""}`}
    </div>`).join("")}
-   ${left?`<button class="done" disabled>Mark every stop to finish · ${left} to go</button>`
+   ${!live?"":left?`<button class="done" disabled>Mark every stop to finish · ${left} to go</button>`
      :`<div class="endp"><h2>All stops marked</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}. What next?</div>
        ${data.selfService&&data.extraLeft>0?`<button class="btn" data-extra>Add extra collections · up to ${data.extraLeft} trees</button>`:""}<button class="btn blue" data-return>Returning to unload</button></div>`}`;
 }
@@ -127,7 +127,8 @@ function endStage(r,got,missed,skipped,callBtn){
       <div class="sm">${p.todayRuns||1} run${(p.todayRuns||1)===1?"":"s"} · ${p.todayStops??got} houses</div>
       ${p.allTrees>p.todayTrees?`<div class="sm">This weekend so far: <b>${p.allTrees} trees</b> on ${p.allRuns} runs</div>`:""}
       ${p.eventTrees?`<div class="sm">Everyone together: <b>${p.eventTrees} trees</b> collected so far</div>`:""}
-      <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>`; }
+      <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>
+      <div class="bar">${data.teamLink?`<a class="btn blue" href="team.html#${esc(data.teamLink)}">Home page</a>`:""}<button class="btn ghost" data-showlist>See this run's stops</button>${callBtn}</div>`; }
   const dp=dpOf(r);
   if(!r.unloadedAt&&!r.arrivedAt) return `<div class="endp"><h2>Heading back to unload</h2><div class="sub">${got} collected, ${missed} missed${skipped?`, ${skipped} skipped`:""}.</div><div class="clbl">Drop-off point</div><div class="q1">${esc(dp.name)}</div><div class="ad1">${esc(dp.full)}</div>${dp.hours||dp.notes?`<div class="in1">${esc([dp.hours,dp.notes].filter(Boolean).join(" · "))}</div>`:""}
       <a class="btn navb" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dp.full)}" target="_blank" rel="noopener">Navigate to Drop Off</a><button class="btn blue" data-arrived>Arrived at ${esc(dp.name)}</button>${otherDrops(dp)}</div><div class="bar">${callBtn}</div>`;
@@ -148,7 +149,7 @@ function howMany(max){return new Promise(res=>{const m=document.createElement("d
 async function step(btn,label,rpc,args){ if(busy) return null; busy=true; btn.disabled=true; const old=btn.textContent; btn.textContent=label;
   const {data:res,error}=await sb.rpc(rpc,{p_token:token,...(args||{})}); busy=false;
   if(error){toast("Couldn't save. Check signal and tap again."); btn.disabled=false; btn.textContent=old; return null} return res||{} }
-async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run",{p_token:token});
+async function load(){ if(!token){data={error:"not_found"};return render()} const {data:d,error}=await sb.rpc("driver_get_run2",{p_token:token});
   if(error){ if(!data){ $("#main").innerHTML=`<div class="empty">Couldn't load your run. Check your signal and tap Try again. If it keeps happening, call the office.</div><button class="btn" onclick="load()">Try again</button>` } else toast("No signal? Retrying…"); return }
   data=d; render() }
 function dropPick(pts,cur,title){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
@@ -221,6 +222,8 @@ function ask(title,text,ok){return new Promise(res=>{const m=document.createElem
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${esc(title)}</h2><div>${esc(text)}</div><div class="bar"><button class="btn ghost" data-x="0">Cancel</button><button class="btn" data-x="1" style="background:var(--blue);border-color:var(--blue)">${esc(ok)}</button></div></div>`;
   m.addEventListener("click",e=>{const x=e.target.closest("[data-x]"); if(!x&&e.target!==m) return; m.remove(); res(x?.dataset.x==="1")}); document.body.appendChild(m)})}
 document.addEventListener("click",async e=>{
+  if(e.target.closest("[data-showlist]")){ showList=true; render(); scrollTo(0,0); return }
+  if(e.target.closest("[data-summary]")){ showList=false; render(); scrollTo(0,0); return }
   const sdp=e.target.closest("button[data-chdrop],button[data-setdrop]"); if(sdp){ if(busy) return; const id=sdp.dataset.setdrop||await dropPick(data.dropPoints||[],data.run.dropPoint); if(!id) return; busy=true; const {data:res,error}=await sb.rpc("driver_set_drop",{p_token:token,p_id:id}); busy=false; if(error||res?.error) toast("Couldn't change it. Try again."); else toast(`Unloading at ${res.dropPoint.name}`); await load(); return }
   const x=e.target.closest("button[data-extra],button[data-return],button[data-arrived],button[data-unloaded],button[data-nextrun],button[data-done]");
   if(x){ const k=x.dataset;
