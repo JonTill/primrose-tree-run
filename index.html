@@ -411,7 +411,7 @@ function renderRuns(main){
   const all=[...runs.values()], by=k=>all.filter(r=>runPhase(r)===k).sort((a,b)=>k==="done"||k==="off"?b.n-a.n:a.n-b.n);
   const g={live:by("live"),ret:by("ret"),unl:by("unl"),done:by("done"),off:by("off")}, list=g[sub];
   const empty={live:"No teams on the road.",ret:"No teams heading back to unload.",unl:"No teams unloading.",done:"No completed runs yet.",off:"No teams have logged off yet."};
-  main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed (${g.done.length})</button><button data-sub="off" aria-pressed="${sub==="off"}">Logged off (${g.off.length})</button></div>
+  main.innerHTML=`<div class="subtabs" role="tablist"><button data-sub="live" aria-pressed="${sub==="live"}">On road (${g.live.length})</button><button data-sub="ret" aria-pressed="${sub==="ret"}">Returning to unload (${g.ret.length})</button><button data-sub="unl" aria-pressed="${sub==="unl"}">Unloading (${g.unl.length})</button><button data-sub="done" aria-pressed="${sub==="done"}">Completed Runs (${g.done.length})</button><button data-sub="off" aria-pressed="${sub==="off"}">Logged off (${g.off.length})</button></div>
   ${leagueCard()}
   ${list.length?`<div class="list">${list.map(runRow).join("")}</div>`:`<div class="empty">${empty[sub]}</div>`}`;
 }
@@ -435,7 +435,7 @@ function renderRun(main,r){
   ${r.state!=="out"&&(r.returningAt||r.unloadedAt||r.doneAt)?`<div class="hint" style="margin-bottom:6px">${[r.target&&`Planned load ${r.target} trees`,r.notFull&&`came back not full (${esc(r.notFull)})`,r.vanFull===true&&r.mode==="live"&&`van full`,r.returningAt&&`Returning to unload${r.dropPoint?" at "+esc(r.dropPoint.name):""} ${tm(r.returningAt)}`,r.arrivedAt&&`arrived to unload ${tm(r.arrivedAt)}`,r.unloadedAt&&`unloaded ${tm(r.unloadedAt)}`,r.doneAt&&`done for the day ${tm(r.doneAt)}`,r.abandonedAt&&`abandoned ${tm(r.abandonedAt)}${r.abandonNote?" ("+esc(r.abandonNote)+")":""}`,r.officeMovedAt&&`moved on by the office ${tm(r.officeMovedAt)}`].filter(Boolean).join(" · ")}.</div>`:""}
   ${(()=>{ const ph=runPhase(r), w=canWrite?"":"disabled", B=(k,l,g)=>`<button class="btn ${g?"ghost":""}" data-stage="${k}" data-rid="${esc(r.id)}" ${w}>${l}</button>`;
     const now=ph==="live"?"On the road":ph==="ret"?"Returning to unload":ph==="unl"?(r.unloadedAt?"Unloaded, driver choosing":"Unloading"):ph==="off"?"Logged off":"Completed";
-    const btns=ph==="live"?B("abandon","Abandoned: put unmarked stops back",1):ph==="ret"?B("arrived","Move to Unloading")+B("unloaded","Move to Completed (unloaded)",1):ph==="unl"&&!r.unloadedAt?B("unloaded","Move to Completed (unloaded)")+B("off","Move to Logged off",1):ph!=="off"&&!r.nextRun?B("off","Move to Logged off",1):"";
+    const btns=ph==="live"?B("abandon","Abandoned: put unmarked stops back",1):ph==="ret"?B("arrived","Move to Unloading")+B("unloaded","Move to Completed Runs (unloaded)",1):ph==="unl"&&!r.unloadedAt?B("unloaded","Move to Completed Runs (unloaded)")+B("off","Move to Logged off",1):ph!=="off"&&!r.nextRun?B("off","Move to Logged off",1):"";
     return btns?`<div class="card" style="margin-bottom:8px"><h3 style="margin:0 0 4px">Move this run on</h3><div class="hint" style="margin-bottom:6px">Now: <b>${now}</b>. Use these if the team stopped using the app or missed a step.</div><div class="steps">${btns}</div></div>`:"" })()}
   ${open&&r.state==="out"?`<div class="hint" style="margin-bottom:8px">Tap <b>Missed</b> on any stop the team couldn't collect. When they're back, tap <b>Complete run</b>: every stop not marked Missed is counted as collected.</div>`:""}
   <div class="list">${list.map((s,i)=>stopCard(s,i+1,r)).join("")}</div>`;
@@ -997,7 +997,7 @@ async function act(b,d){
       const n=await noteBox(`Run ${r.n} abandoned?`,`${r.team}: ${todo.length} unmarked stop${todo.length===1?"":"s"} go back on the list for another team. Stops already marked stay as they are (${got} tree${got===1?"":"s"} collected). The run moves to Returning to unload.`,"Put stops back","e.g. Van broke down");
       if(n===null) return; const res=await Promise.all(todo.map(x=>patch("stops/"+sid(x.ref),{status:"",run:null}))); if(res.some(v=>!v)){ toast("Some stops didn't save. Tap again."); return }
       if(await patch("runs/"+r.id,{state:"back",backAt:now,returningAt:r.returningAt||now,dropPoint:r.dropPoint||main||null,abandonedAt:now,abandonNote:n,officeMovedBy:me||""})) toast(`Run ${r.n}: ${todo.length} stop${todo.length===1?"":"s"} back on the list`); return }
-    const lab={arrived:"Unloading",unloaded:"Completed",off:"Logged off"}[d.stage];
+    const lab={arrived:"Unloading",unloaded:"Completed Runs",off:"Logged off"}[d.stage];
     if(!await confirmBox(`Move run ${r.n} to ${lab}?`,`${r.team}. Use this if the team didn't tap through the steps themselves.`,"Move")) return;
     const up=d.stage==="arrived"?{arrivedAt:now}:d.stage==="unloaded"?{arrivedAt:r.arrivedAt||now,unloadedAt:now}:{arrivedAt:r.arrivedAt||now,unloadedAt:r.unloadedAt||now,doneAt:now};
     if(!r.returningAt) up.returningAt=now;
