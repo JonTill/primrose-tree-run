@@ -174,7 +174,7 @@ const BIG=15;       // teams carrying this many trees or more are steered to mul
 const M365="Microsoft 365";
 const TABS=[["runs","Teams Status"],["map","Map"],["misses","Needs attention"],["addresses","Addresses"],["teams","Teams"],["settings","Settings"],["help","Help"]];
 
-let stops=new Map(), runs=new Map(), teams=new Map(), settings={};
+let stops=new Map(), runs=new Map(), teams=new Map(), settings={}, signups=new Map();
 let db=null, mcp=null, dl=null, tried=false, canWrite=true, me=null, got={stops:false,runs:false,teams:false};
 let view={tab:"runs",run:null}, preview=null, busy=false;
 try{const s=JSON.parse(localStorage.getItem("treerun-v2")||"null"); if(s&&s.tab) view=s; if(view.tab==="dispatch") view={...view,tab:"settings",ssub:"run"};}catch(e){}
@@ -224,7 +224,7 @@ function renderTally(){
 const tooBig=s=>s.status===""&&s.skipReason==="Tree too big"&&!!s.skippedRun&&!outArea(s);
 const refundDue=s=>s.customerReply==="refund"&&!s.refundDoneAt;
 const addrNew=s=>!!s.addrChangedAt&&!s.addrAckAt;
-function missCount(){let n=0;for(const s of stops.values()) if(s.status==="Missed"||outArea(s)||tooBig(s)||refundDue(s)||addrNew(s)) n++;return n}
+function missCount(){let n=newSignups().length;for(const s of stops.values()) if(s.status==="Missed"||outArea(s)||tooBig(s)||refundDue(s)||addrNew(s)) n++;return n}
 function renderTabs(){
   const m=missCount();
   $("#tabs").innerHTML=TABS.map(([k,l])=>`<button id="tab-${k}" data-tab="${k}" aria-pressed="${view.tab===k}">${l}${k==="misses"&&m?`<span class="n">${m}</span>`:""}</button>`).join("");
@@ -475,6 +475,7 @@ function renderMisses(main){
   <h3 style="color:var(--bad)">Missed (${ms.length})</h3><div class="hint" style="margin-bottom:8px">First miss: email the customer. Each customer gets their own email with a link to tell us the tree is out (it goes straight back on the list) or not needed (it closes), plus the driver's photo if there is one. They can also reply to the email${MAILTO?": replies come to your inbox, so tap <b>Customer replied</b> on the card when one arrives":""}. ${MAILTO?"The emails open one after another in your own email program: press Send, then <b>I've sent it</b> for the next. ":""}One rebook only. A second miss gets a final email and the stop is closed.</div>
   <div class="row" style="margin-bottom:8px"><button class="btn bad" data-emailall ${dis||(!toEmail.length?"disabled":"")}>Email ${toEmailN} missed customer${toEmailN===1?"":"s"}</button><button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>
   ${ms.length?`<div class="list">${ms.map(missCard).join("")}</div>`:`<div class="empty">No missed trees.</div>`}
+  ${signupApprovals()}
   ${(()=>{ const all=[...stops.values()], rf=all.filter(refundDue), ac=all.filter(addrNew), don=all.filter(s=>s.customerReply==="donate"), rdone=all.filter(s=>s.customerReply==="refund"&&s.refundDoneAt);
     const sum=l=>l.reduce((a,s)=>a+(+s.paid||0),0), unk=l=>l.filter(s=>!money(s.paid)).length;
     let h="";
@@ -623,6 +624,17 @@ function editStop(s){
 }
 
 /* ---------- team self-serve links ---------- */
+const newSignups=()=>[...signups.values()].filter(s=>s.status==="new").sort((a,b)=>String(a.submittedAt).localeCompare(String(b.submittedAt)));
+const SIGNUP_URL=()=>location.href.split("#")[0].replace(/[^/]*$/,"")+"signup.html";
+function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==false;
+  return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. New sign-ups appear on <b>Needs attention</b> for you to approve; approved ones are added here, then create and email their team link as usual.${ns.length?` <b>${ns.length} waiting for approval.</b>`:""}${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
+   <div class="row" style="margin-top:8px"><button class="btn" data-cpsignup>Copy sign-up link</button><button class="btn ghost" data-suopen="${open?"0":"1"}" ${dis}>${open?"Close sign-ups":"Open sign-ups"}</button></div></div>` }
+function signupApprovals(){ const ns=newSignups(), dis=canWrite?"":"disabled"; if(!ns.length) return "";
+  const slot=s=>(s.slots||[]).map(x=>`${DAY_LABEL[x.day]||x.day} ${x.from}–${x.to}`).join(", ");
+  return `<h3 style="color:var(--bad)">Team sign-ups to approve (${ns.length})</h3><div class="hint" style="margin-bottom:8px">From the sign-up link. <b>Approve</b> adds the team to the Teams tab (you can still edit it there); then create and email their team link. <b>Decline</b> if they're not needed or it's a duplicate.</div>
+   <div class="list">${ns.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.capacity} trees per load</b><span class="chip warn">Sent ${esc(tm(s.submittedAt))}</span></div>
+     <div class="hint">${esc(s.contact)} · ${esc(s.phone)} · ${esc(s.email)}${(s.members||[]).length?"<br>Also: "+s.members.map(m=>esc(m.name)+(m.phone||m.email?" ("+[m.phone,m.email].filter(Boolean).map(esc).join(" · ")+")":"")).join(", "):""}<br>${esc(s.vehicle)}${s.large?" · Can take large trees":""}<br>Times: ${esc(slot(s))}${s.notes?"<br>Note: "+esc(s.notes):""}</div>
+     <div class="steps"><button class="btn" data-suadd="${esc(s.id)}" ${dis}>Approve</button><button class="btn ghost" data-sudecl="${esc(s.id)}" ${dis}>Decline</button></div></div>`).join("")}</div>` }
 const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"driver.html").replace(/driver\.html$/,"team.html");
 const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
 const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,"");
@@ -841,7 +853,7 @@ function renderHelp(main,force){
 function renderTeams(main){
   const all=[...teams.values()].sort((a,b)=>a.name.localeCompare(b.name));
   const dis=canWrite?"":"disabled";
-  main.innerHTML=`<div class="card"><h2>Add a team</h2>
+  main.innerHTML=`${signupCard(dis)}<div class="card" style="margin-top:10px"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Start trees per load</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
    </div>
@@ -865,7 +877,7 @@ let laT=null;
 function localApply(path,data,whole){   // show a saved change straight away; the live feed confirms it a moment later
   try{ const [c,id]=path.split("/");
     if(c==="settings"&&id==="main"){ settings=whole?{...data}:{...settings,...data}; AREA={core:+settings.areaCore||8,link:+settings.areaLink||3,max:+settings.areaMax||20} }
-    else{ const m=c==="stops"?stops:c==="runs"?runs:c==="teams"?teams:null; if(!m) return;
+    else{ const m=c==="stops"?stops:c==="runs"?runs:c==="teams"?teams:c==="signups"?signups:null; if(!m) return;
       const k=c==="stops"?parseInt(id.slice(1),10):id; const cur=m.get(k); if(!cur&&!whole) return; const v=whole?{...data}:{...cur,...data}; m.set(k,c==="stops"?attachHelpers(v):v) }
     if(c==="stops"||c==="settings") ISO=null; clearTimeout(laT); laT=setTimeout(render,50) }catch(e){} }
 function fail(e){ const m=String(e&&e.message||"");
@@ -1038,6 +1050,12 @@ async function act(b,d){
   if(d.mklink){ const t=teams.get(d.mklink); if(!t) return; if(d.renew&&!await confirmBox("Reset link?",`${t.name}'s old link will stop working. Send them the new one.`,"Reset Link")) return;
     if(await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Tap Copy Link to send it.`); return }
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
+  if("cpsignup" in d){ const ok=await copyText(SIGNUP_URL()); if(ok) toast("Sign-up link copied"); else if(ok===false) toast("Couldn't copy"); return }
+  if(d.suopen){ if(await patch("settings/main",{signupOpen:d.suopen==="1"})) toast(d.suopen==="1"?"Sign-ups open":"Sign-ups closed"); return }
+  if(d.sudecl){ const s=signups.get(d.sudecl); if(!s) return; if(!await confirmBox("Decline sign-up?",`${s.name} won't be added as a team.`,"Decline")) return; if(await patch("signups/"+s.id,{status:"declined",doneAt:new Date().toISOString(),doneBy:me})) toast(`${s.name} declined`); return }
+  if(d.suadd){ const s=signups.get(d.suadd); if(!s) return; const id="t"+Date.now().toString(36);
+    if(!await put("teams/"+id,{id,name:String(s.name).slice(0,60),capacity:Math.min(+s.capacity||10,60),contact:s.contact,phone:s.phone,email:s.email,vehicle:s.vehicle,slots:s.slots||[],large:!!s.large,members:(s.members||[]).slice(0,2),notes:s.notes||"",signupId:s.id})) return;
+    await patch("signups/"+s.id,{status:"added",teamId:id,doneAt:new Date().toISOString(),doneBy:me}); toast(`${s.name} approved and added on the Teams tab`); return }
   if(d.tmail){ const t=teams.get(d.tmail); if(t) await emailTeamLink(t); return }
   if(d.cplink){ const t=teams.get(d.cplink); const ok=await copyText(teamLink(t)); if(ok) toast(`${t.name} link copied`); else if(ok===false) toast("Couldn't copy"); return }
   if(d.pause){ const t=teams.get(d.pause); if(await patch("teams/"+t.id,{paused:!t.paused})) toast(t.paused?`${t.name}: jobs resumed`:`${t.name}: jobs paused`); return }
@@ -1087,6 +1105,7 @@ render();
   db.collection("stops").limit(20000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; ISO=null; redrawSoon()},()=>{ if(Date.now()-(window.__lostAt||0)>60000){ window.__lostAt=Date.now(); toast("Connection lost: retrying…") } });
   db.collection("runs").limit(5000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} runs=mp; redrawSoon()},()=>{});
   db.doc("settings/main").onSnapshot(snap=>{settings=snap.exists?{...snap.data()}:{}; AREA={core:+settings.areaCore||8,link:+settings.areaLink||3,max:+settings.areaMax||20}; ISO=null; redrawSoon()},()=>{});
+  db.collection("signups").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x&&x.id)mp.set(x.id,x)} signups=mp; redrawSoon()},()=>{});
   db.collection("teams").limit(500).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} teams=mp; redrawSoon()},()=>{});
 })();
 </script>
