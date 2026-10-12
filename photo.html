@@ -26,6 +26,8 @@ h1{font:900 1.5rem/1.2 var(--display);color:var(--blue);margin:8px 0 0}
 .btn.go{background:var(--green);border-color:var(--green);color:#fff}
 .btn:disabled{opacity:.6}
 .warn{color:var(--bad);font-weight:700}
+.form label{display:block;font-weight:700;margin:0 0 10px}
+.form input{display:block;width:100%;font:16px var(--body);padding:12px;border:1px solid var(--line);border-radius:10px;margin-top:4px;background:var(--surface);color:var(--fg)}
 footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:10px}
 </style></head><body>
 <div class="wrap">
@@ -77,11 +79,48 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
     b1.onclick=()=>ask("ready","We'll put your tree back on our list for one more visit before the end of Sunday 10 January. Please make sure it's out where our volunteers can see it from the road.");
     b2.onclick=()=>ask("not_needed","We'll take your address off our list and won't call again for this tree.");
   }
+  let PC=null; const geo=async pc=>{ try{ if(!PC) PC=await (await fetch("postcodes.json")).json(); const k=pc.toUpperCase().replace(/[^A-Z0-9]/g,""); if(PC.pc[k]) return PC.pc[k]; return null }catch(e){ return null } };
+  function btns(list){ const r=document.createElement("div"); r.className="btns"; for(const [t,cls,fn] of list){ const b=document.createElement("button"); b.className="btn"+(cls?" "+cls:""); b.textContent=t; b.onclick=()=>fn(b); r.append(b) } return r }
+  function oaBox(st,data){
+    const box=document.getElementById("st"); box.innerHTML=""; box.className="note";
+    const paid=data.paid!=null&&!isNaN(+data.paid)?" of £"+(+data.paid).toFixed(2).replace(/[.]00$/,""):"";
+    const until=data.cutoff?fmt(data.cutoff,{weekday:"long",day:"numeric",month:"long",hour:"numeric",minute:"2-digit"}):"";
+    const done=(cls,...t)=>{ box.className="note"+(cls?" "+cls:""); box.innerHTML=""; t.forEach(x=>box.append(P(x))) };
+    if(st==="oa_in") return done("ok","Your collection is on our list. Please leave the tree somewhere our volunteers can see it from the road, for example at the front of the house or by the drive.");
+    if(st==="oa_review") return done("","Thank you, we've got your new address. It still looks outside our collection area, or we couldn't recognise the postcode, so the office will check it and get in touch.");
+    if(st==="donated") return done("ok","Thank you for your donation to Primrose Hospice. We won't be collecting a tree from you.");
+    if(st==="refund") return done("","Thank you. Your refund request has been passed to the office. Refunds can take a few days.");
+    if(st==="closed") return done("","This collection has been closed. If you have a question, please reply to the email we sent you.");
+    const addr=[data.address,data.postcode].filter(Boolean).join(", ");
+    box.append(P("The address we have for your collection"+(addr?", "+addr+",":"")+" is outside the area our volunteers cover, so we can't collect your tree."));
+    if(!data.can_reply) return box.append(P("It's now too late to change this online. Please reply to the email we sent you."));
+    box.append(P("What would you like to do?"+(until?" (by "+until+")":"")));
+    const confirm=(choice,text)=>{ box.innerHTML=""; box.append(P(text));
+      const err=P(""); err.className="warn";
+      box.append(btns([["Yes, confirm","go",async b=>{ b.disabled=true; b.textContent="Saving…"; const r=await send(choice); if(r) oaBox(r,data); else { b.disabled=false; b.textContent="Yes, confirm"; err.textContent="That didn't save. Please check your connection and try again." } }],["Go back","",()=>oaBox("outarea",data)]]),err) };
+    const send=async(choice,extra={})=>{ try{ const {data:res,error}=await sb.rpc("customer_oa_respond",{p_key:key,p_choice:choice,...extra}); if(error) return null;
+      if(res.ok) return res.state; if(res.error==="too_late"){ data.can_reply=false; return "outarea" } if(res.error==="already"){ location.reload(); return null } return res.error }catch(e){ return null } };
+    box.append(btns([
+      ["The address is wrong: correct it","go",()=>{ box.innerHTML=""; box.append(P("Please give the full address where the tree will be:"));
+        const f=document.createElement("div"); f.className="form";
+        f.innerHTML='<label>House number and street, and town<input id="na" maxlength="150" autocomplete="street-address"></label><label>Postcode<input id="np" maxlength="10" autocapitalize="characters" autocomplete="postal-code"></label>';
+        box.append(f); const err=P(""); err.className="warn";
+        box.append(btns([["Save the new address","go",async b=>{ const a=f.querySelector("#na").value.trim(), pc=f.querySelector("#np").value.trim();
+            if(a.length<5){ err.textContent="Please enter the house number, street and town."; return }
+            if(!/^[A-Za-z]{1,2}[0-9][A-Za-z0-9]?[ ]*[0-9][A-Za-z]{2}$/.test(pc)){ err.textContent="Please check the postcode."; return }
+            b.disabled=true; b.textContent="Saving…"; const g=await geo(pc);
+            const r=await send("address",{p_address:a,p_postcode:pc,p_lat:g?g[0]:null,p_lon:g?g[1]:null});
+            if(r==="oa_in"||r==="oa_review"||r==="outarea") return oaBox(r,data);
+            b.disabled=false; b.textContent="Save the new address"; err.textContent=r==="bad_postcode"?"Please check the postcode.":r==="bad_address"?"Please enter the house number, street and town.":"That didn't save. Please check your connection and try again." }],["Go back","",()=>oaBox("outarea",data)]]),err) }],
+      ["Keep my payment as a donation","",()=>confirm("donate","Thank you! We'll keep your payment"+paid+" as a donation to Primrose Hospice, and we won't collect a tree.")],
+      ["Ask for a refund","",()=>confirm("refund","We'll ask the office to refund your payment"+paid+". Refunds can take a few days.")]]));
+  }
   try{
     const {data,error}=await sb.rpc("customer_photo",{p_key:key});
     if(error) return msg("We couldn't load the photo just now. Please try again in a few minutes.");
     if(data.error==="collected") return msg("Good news: your tree has now been collected. Thank you for supporting Primrose Hospice.");
     if(data.error) return msg("This link is no longer active. If you have a question, please reply to the email.");
+    if(data.mode==="outarea"){ m.innerHTML='<div id="st"></div>'; return oaBox(data.state,data) }
     const okImg=/^data:image[/](jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(data.img||"");
     if(!okImg){ const day=data.missed_at?" on "+fmt(data.missed_at,{weekday:"long",day:"numeric",month:"long"}):"";
       m.innerHTML='<p style="margin-top:0">Our volunteers called to collect your tree'+day+' but couldn&#39;t find it.</p><div id="st"></div>'; stateBox(data.state,data); return }
