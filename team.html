@@ -115,6 +115,7 @@ window.addEventListener("hashchange",()=>location.reload());
 const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const short=a=>String(a||"").replace(/, Worcestershire$/,"");
 let data=null, busy=false, token="", geoOK=false, view="home", lastOk=0, loadSeq=0, loading=false, loadAgain=null;
+try{ if(sessionStorage.getItem("tr-gohome")){ view="gohome"; sessionStorage.removeItem("tr-gohome") } }catch(_){}   // came from the driver page Home button: skip the thank-you
 const RK="role:"+teamToken; let role=null; try{role=localStorage.getItem(RK)}catch(_){}
 const crew=()=>role==="crew";
 function setRole(v){ role=v; try{localStorage.setItem(RK,v)}catch(_){} render() }
