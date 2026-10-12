@@ -105,7 +105,7 @@ option{color:var(--fg)}
 table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
 th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.days{display:flex;gap:10px;flex-wrap:wrap}
+.days{display:flex;gap:10px;flex-wrap:wrap}.slots{display:flex;flex-direction:column;gap:6px}.slotrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.slotrow label{font-weight:600;display:flex;gap:6px;align-items:center;min-width:80px}.slotrow input[type=time]{width:auto}
 .days label{font-weight:600;display:flex;gap:4px;align-items:center}
 footer{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.8rem}
 footer img{height:26px;width:auto;background:var(--plate);border-radius:4px;padding:3px 5px}
@@ -239,18 +239,23 @@ function nowSlot(team,now=new Date()){
 function who(t){t=t||{};return [t.contact,t.phone].filter(Boolean).join(" · ")}
 function whoRun(r){return who(teams.get(r&&r.teamId))}
 function runOf(n){for(const r of runs.values()) if(r.n===n) return r; return null}
-const mem=pre=>[2,3].map(n=>({name:(document.getElementById(pre+"-m"+n+"n")?.value||"").trim().slice(0,80),phone:(document.getElementById(pre+"-m"+n+"p")?.value||"").trim().slice(0,30)})).filter(m=>m.name);
+const mem=pre=>[2,3].map(n=>({name:(document.getElementById(pre+"-m"+n+"n")?.value||"").trim().slice(0,80),phone:(document.getElementById(pre+"-m"+n+"p")?.value||"").trim().slice(0,30),email:(document.getElementById(pre+"-m"+n+"e")?.value||"").trim().slice(0,120)})).filter(m=>m.name).map(m=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m.email)?m:{name:m.name,phone:m.phone});
 function teamBusy(id){for(const r of runs.values()) if(r.state==="out"&&r.teamId===id) return r; return null}
+function slotRows(pre,t){ const by={}; (t&&t.slots||[]).forEach(s=>by[s.day]=s);
+  return `<div class="slots">${Object.keys(EVENT_DAYS).map(k=>{const s=by[k]; return `<div class="slotrow"><label><input type="checkbox" id="${pre}-d-${k}" ${s?"checked":""}> ${DAY_LABEL[k]}</label><input type="time" id="${pre}-f-${k}" aria-label="${DAY_LABEL[k]} from" value="${esc(s?.from||"09:00")}"><span class="hint">to</span><input type="time" id="${pre}-t-${k}" aria-label="${DAY_LABEL[k]} to" value="${esc(s?.to||"15:30")}"></div>`}).join("")}</div>` }
+function readSlots(pre,root=document){ const q=id=>root.querySelector("#"+id), out=[];
+  for(const k of Object.keys(EVENT_DAYS)){ if(!q(`${pre}-d-${k}`)?.checked) continue; const from=q(`${pre}-f-${k}`).value||"09:00", to=q(`${pre}-t-${k}`).value||"15:30";
+    if(to<=from){ toast(`${DAY_LABEL[k]}: the finish time must be after the start`); return null } out.push({day:k,from,to}) }
+  return out }
 function slotText(t){return (t.slots||[]).map(s=>`${DAY_LABEL[s.day]||s.day} ${s.from}–${s.to}`).join(", ")||"No times agreed"}
 function teamOptions(sel){
   const all=[...teams.values()].sort((a,b)=>a.name.localeCompare(b.name));
-  const groups={now:[],outside:[],extra:[]};
-  for(const t of all){ (t.extra?groups.extra:(nowSlot(t)?groups.now:groups.outside)).push(t) }
+  const groups={now:[],outside:[]};
+  for(const t of all){ (nowSlot(t)?groups.now:groups.outside).push(t) }
   const opt=(t,out)=>{const b=teamBusy(t.id);return `<option value="${esc(t.id)}" ${sel===t.id?"selected":""} ${b?"disabled":""} ${out?'class="outside"':""}>${out&&sel===t.id?"OUTSIDE HOURS · ":""}${esc(t.name)} · ${t.capacity} trees</option>`};
   return `<option value="">Choose a team…</option>
    <optgroup label="Available now (${groups.now.length})">${groups.now.map(t=>opt(t,false)).join("")}</optgroup>
-   <optgroup class="outside" label="Outside agreed times (${groups.outside.length})">${groups.outside.map(t=>opt(t,true)).join("")}</optgroup>
-   <optgroup label="Extras (${groups.extra.length})">${groups.extra.map(t=>opt(t,false)).join("")}</optgroup>`;
+   <optgroup class="outside" label="Outside agreed times (${groups.outside.length})">${groups.outside.map(t=>opt(t,true)).join("")}</optgroup>`;
 }
 
 /* ---------- run building ---------- */
@@ -374,10 +379,10 @@ function renderDispatch(main){
   main.innerHTML=`<div class="card">
     <h2>Send the next run</h2>${bigWait?`<div class="hint" style="margin-bottom:8px"><span class="chip out">Large trees</span> ${bigWait} waiting. Only teams that can take large trees will be given them.</div>`:""}
     <div class="row">
-      <div class="field" style="flex:2 1 220px"><label for="team-sel">Volunteer team</label><select id="team-sel" class="${team&&!team.extra&&!nowSlot(team)?"outside":""}">${teamOptions(sel)}</select></div>
+      <div class="field" style="flex:2 1 220px"><label for="team-sel">Volunteer team</label><select id="team-sel" class="${team&&!nowSlot(team)?"outside":""}">${teamOptions(sel)}</select></div>
       <div class="field" style="flex:0 1 110px"><label for="cap">Trees this run</label><input id="cap" type="number" min="1" max="60" value="${esc(cap)}"></div>
     </div>
-    ${team?`<div class="hint">${esc(team.contact||"")}${team.phone?" · "+esc(team.phone):""}${team.vehicle?" · "+esc(team.vehicle):""}${team.large?" · Takes large trees":""}<br>Agreed times: ${esc(slotText(team))}${!team.extra&&!nowSlot(team)?' · <b style="color:var(--bad)">Outside agreed times</b>':""}${team.notes?`<br>Note: ${esc(team.notes)}`:""}</div>`:`<div class="hint">${teams.size?"Teams available now are listed first. Teams outside their agreed times and extras are listed below them.":"No teams yet. Add them on the Teams tab, or ask Claude to load the volunteer list."}</div>`}
+    ${team?`<div class="hint">${esc(team.contact||"")}${team.phone?" · "+esc(team.phone):""}${team.vehicle?" · "+esc(team.vehicle):""}${team.large?" · Takes large trees":""}<br>Agreed times: ${esc(slotText(team))}${!nowSlot(team)?' · <b style="color:var(--bad)">Outside agreed times</b>':""}${team.notes?`<br>Note: ${esc(team.notes)}`:""}</div>`:`<div class="hint">${teams.size?"Teams available now are listed first. Teams outside their agreed times are listed below them.":"No teams yet. Add them on the Teams tab, or ask Claude to load the volunteer list."}</div>`}
     ${officeNo()?"":`<div class="hint" style="color:var(--bad)">No office mobile set. Add it on the Settings tab so drivers know who to call.</div>`}
     <div class="row"><button class="btn" data-build ${canWrite&&team?"":"disabled"}>Build run</button>${team?"":'<span class="hint">Choose a team first.</span>'}<span class="hint">${queue.length} addresses waiting (${qTrees} trees)${rb?`, ${rb} rebooked`:""}</span></div>
   </div>
@@ -561,13 +566,11 @@ function editTeam(t){
     d.innerHTML=`<div class="mbox" style="max-height:92vh;overflow:auto;max-width:520px"><h2>Edit ${esc(t.name)}</h2>
      <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-name">Team name</label><input id="et-name" type="text" value="${esc(t.name)}"></div><div class="field" style="flex:0 1 110px"><label for="et-cap">Start trees per load</label><input id="et-cap" type="number" min="1" max="60" value="${esc(t.capacity)}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-contact">Contact name</label><input id="et-contact" type="text" value="${esc(t.contact||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-phone">Phone</label><input id="et-phone" type="tel" inputmode="tel" value="${esc(t.phone||"")}"></div></div>
-     <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m2n">Team member 2 (optional)</label><input id="et-m2n" type="text" autocomplete="off" value="${esc((((t).members||[])[0]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m2p">Their phone</label><input id="et-m2p" type="tel" inputmode="tel" value="${esc((((t).members||[])[0]||{}).phone||"")}"></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m3n">Team member 3 (optional)</label><input id="et-m3n" type="text" autocomplete="off" value="${esc((((t).members||[])[1]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m3p">Their phone</label><input id="et-m3p" type="tel" inputmode="tel" value="${esc((((t).members||[])[1]||{}).phone||"")}"></div></div>
+     <div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m2n">Team member 2 (optional)</label><input id="et-m2n" type="text" autocomplete="off" value="${esc((((t).members||[])[0]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m2p">Their phone</label><input id="et-m2p" type="tel" inputmode="tel" value="${esc((((t).members||[])[0]||{}).phone||"")}"></div><div class="field" style="flex:2 1 180px"><label for="et-m2e">Their email</label><input id="et-m2e" type="email" value="${esc((((t).members||[])[0]||{}).email||"")}"></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="et-m3n">Team member 3 (optional)</label><input id="et-m3n" type="text" autocomplete="off" value="${esc((((t).members||[])[1]||{}).name||"")}"></div><div class="field" style="flex:1 1 140px"><label for="et-m3p">Their phone</label><input id="et-m3p" type="tel" inputmode="tel" value="${esc((((t).members||[])[1]||{}).phone||"")}"></div><div class="field" style="flex:2 1 180px"><label for="et-m3e">Their email</label><input id="et-m3e" type="email" value="${esc((((t).members||[])[1]||{}).email||"")}"></div></div>
      <div class="row"><div class="field" style="flex:2 1 200px"><label for="et-email">Email</label><input id="et-email" type="email" value="${esc(t.email||"")}"></div><div class="field" style="flex:1 1 170px"><label for="et-vehicle">Vehicle</label><select id="et-vehicle"><option value="">Choose…</option>${veh.map(v=>`<option ${v===t.vehicle?"selected":""}>${esc(v)}</option>`).join("")}</select></div></div>
-     <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(k=>`<label><input type="checkbox" id="et-d-${k}" ${days.has(k)?"checked":""}> ${DAY_LABEL[k]}</label>`).join("")}</div>
-      <div class="row"><div class="field" style="flex:0 1 130px"><label for="et-from">From</label><input id="et-from" type="time" value="${esc(s0.from||"09:00")}"></div><div class="field" style="flex:0 1 130px"><label for="et-to">To</label><input id="et-to" type="time" value="${esc(s0.to||"15:30")}"></div></div></div>
+     <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("et",t)}</div>
      <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" value="${esc(t.notes||"")}"></div>
      <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-large" ${t.large?"checked":""}> Can take large trees</label>
-     <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-extra" ${t.extra?"checked":""}> Extra team (not on the original rota)</label>
      <div class="row" style="justify-content:flex-end">${[...runs.values()].some(r=>r.teamId===t.id)?"":`<button class="btn ghost" data-m="del" style="color:var(--bad);border-color:var(--bad);margin-right:auto">Remove team</button>`}<button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Save</button></div>${[...runs.values()].some(r=>r.teamId===t.id)?`<div class="hint">This team has done runs, so it can't be removed.</div>`:""}</div>`;
     const close=v=>{d.remove();document.removeEventListener("keydown",kd,true);res(v)}; const kd=e=>{if(e.key==="Escape"){e.stopPropagation();close(false)}};
     d.querySelector("#et-vehicle").addEventListener("change",e=>{ if(/Transit|trailer|Luton/i.test(e.target.value)) d.querySelector("#et-large").checked=true });
@@ -578,10 +581,9 @@ function editTeam(t){
       if(!name||!(cap>0)){toast("Enter a team name and start trees per load");return}
       if(!contact||!phone||!vehicle){toast("Enter the contact name, phone and vehicle");return}
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("That email address doesn't look right");return}
-      const from=q("#et-from").value||"09:00", to=q("#et-to").value||"15:30";
-      const slots=Object.keys(EVENT_DAYS).filter(k=>q("#et-d-"+k).checked).map(day=>({day,from,to}));
+      const slots=readSlots("et",d); if(!slots) return;
       b.disabled=true;
-      const ok=await patch("teams/"+t.id,{name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,200),large:q("#et-large").checked,extra:q("#et-extra").checked,members:mem("et")});
+      const ok=await patch("teams/"+t.id,{name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,200),large:q("#et-large").checked,members:mem("et")});
       if(ok&&name!==t.name){ for(const r of runs.values()) if(r.teamId===t.id&&r.state==="out") await patch("runs/"+r.id,{team:name.slice(0,60)}) }
       b.disabled=false; if(ok) close(true) });
     document.addEventListener("keydown",kd,true); document.body.appendChild(d); d.querySelector("#et-name").focus();
@@ -640,9 +642,10 @@ async function emailTeamLink(t){
   if(!t.email){toast(`No email address for ${t.name}. Add one with Edit.`);return false}
   if(!teamLink(t)){toast("Create the link first");return false}
   const em=teamLinkEmail(t), mark=()=>patch("teams/"+t.id,{linkEmailedAt:new Date().toISOString(),linkEmailedTo:t.email});
-  if(MAILTO){ if(!await openMail({to:[t.email],subject:em.subject,text:em.text})) return false; await mark(); toast(MAIL_TOAST); return true }
+  const to=[t.email,...(t.members||[]).map(m=>m.email).filter(Boolean)];
+  if(MAILTO){ if(!await openMail({to,subject:em.subject,text:em.text})) return false; await mark(); toast(MAIL_TOAST); return true }
   if(!mcp){toast("Emails need the Microsoft 365 connector. Open the page in Claude with it connected.");return false}
-  try{ await mcp.callTool(M365,"outlook_send_mail",{to:[t.email],subject:em.subject,body:em.body,bodyType:"html"}); await mark(); toast(`Link emailed to ${t.name}`); return true }
+  try{ await mcp.callTool(M365,"outlook_send_mail",{to,subject:em.subject,body:em.body,bodyType:"html"}); await mark(); toast(`Link emailed to ${t.name}`); return true }
   catch(e){ toast(mcpMsg(e)); return false } }
 
 /* ---------- map of teams ---------- */
@@ -839,24 +842,22 @@ function renderHelp(main,force){
   const inp=$("#help-q"); inp.addEventListener("input",()=>{ const pos=inp.selectionStart; renderHelp(main,true); const n=$("#help-q"); n.focus(); n.setSelectionRange(pos,pos) },{once:true});
 }
 function renderTeams(main){
-  const all=[...teams.values()].sort((a,b)=>(a.extra-b.extra)||a.name.localeCompare(b.name));
+  const all=[...teams.values()].sort((a,b)=>a.name.localeCompare(b.name));
   const dis=canWrite?"":"disabled";
   main.innerHTML=`<div class="card"><h2>Add a team</h2>
    <div class="row"><div class="field" style="flex:2 1 200px"><label for="t-name">Team name</label><input id="t-name" type="text" placeholder="e.g. Rotary Club, Team 4"></div>
    <div class="field" style="flex:0 1 110px"><label for="t-cap">Start trees per load</label><input id="t-cap" type="number" min="1" max="60" value="10"></div>
    </div>
    <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-contact">Contact name</label><input id="t-contact" type="text" autocomplete="off" placeholder="e.g. Karen Bannister"></div><div class="field" style="flex:1 1 140px"><label for="t-phone">Phone</label><input id="t-phone" type="tel" inputmode="tel" placeholder="07700 900000"></div><div class="field" style="flex:2 1 200px"><label for="t-email">Email</label><input id="t-email" type="email" placeholder="name@example.com"></div><div class="field" style="flex:1 1 170px"><label for="t-vehicle">Vehicle</label><select id="t-vehicle"><option value="">Choose…</option><option>Estate car</option><option>Estate car &amp; trailer</option><option>Pickup truck</option><option>Small van</option><option>Transit van</option><option>Large van / Luton</option><option>Other</option></select></div></div>
-   <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m2n">Team member 2 (optional)</label><input id="t-m2n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m2p">Their phone</label><input id="t-m2p" type="tel" inputmode="tel" value=""></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m3n">Team member 3 (optional)</label><input id="t-m3n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m3p">Their phone</label><input id="t-m3p" type="tel" inputmode="tel" value=""></div></div>
-   <div class="field"><label>Agreed times</label><div class="days">${Object.keys(EVENT_DAYS).map(d=>`<label><input type="checkbox" id="t-d-${d}"> ${DAY_LABEL[d]}</label>`).join("")}</div>
-   <div class="row"><div class="field" style="flex:0 1 130px"><label for="t-from">From</label><input id="t-from" type="time" value="09:00"></div><div class="field" style="flex:0 1 130px"><label for="t-to">To</label><input id="t-to" type="time" value="15:30"></div></div></div>
-   <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-extra"> Extra team (not on the original rota)</label>
+   <div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m2n">Team member 2 (optional)</label><input id="t-m2n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m2p">Their phone</label><input id="t-m2p" type="tel" inputmode="tel" value=""></div><div class="field" style="flex:2 1 180px"><label for="t-m2e">Their email</label><input id="t-m2e" type="email" value=""></div></div><div class="row"><div class="field" style="flex:2 1 180px"><label for="t-m3n">Team member 3 (optional)</label><input id="t-m3n" type="text" autocomplete="off" value=""></div><div class="field" style="flex:1 1 140px"><label for="t-m3p">Their phone</label><input id="t-m3p" type="tel" inputmode="tel" value=""></div><div class="field" style="flex:2 1 180px"><label for="t-m3e">Their email</label><input id="t-m3e" type="email" value=""></div></div>
+   <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("t",null)}</div>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Let's go get some trees!</b> and get one collection at a time until the van is full. Tap <b>Copy Link</b> and send it to the team contact by text or email. <b>Pause Jobs</b> stops a team getting new jobs; <b>Reset Link</b> makes a new link and stops the old one working.</div>
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees per load</th><th>Agreed times</th><th>Done</th><th>Team link</th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.extra?' <span class="chip warn">Extra</span>':""}${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${(t.members||[]).length?"<br>Also: "+t.members.map(m=>esc(m.name)+(m.phone?" ("+esc(m.phone)+")":"")).join(", "):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}${t.capEst!=null?`<br><span class="hint">Learned <b>${t.capEst}</b> from ${(t.capObs||[]).length} full load${(t.capObs||[]).length===1?"":"s"}</span>`:""}</td><td>${esc(slotText(t))}${t.extra?"":nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td style="white-space:nowrap">${n} run${n===1?"":"s"}<br>${col} tree${col===1?"":"s"}${b?`<br><span class="chip out">Out</span>`:""}</td><td>${teamLinkCell(t,dis)}<div class="tbtns" style="margin-top:6px"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit Team</button><button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button></div></td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.large?' <span class="chip out">Large trees</span>':""}<br><span class="hint">${esc(t.contact||"")}${t.phone?" · "+esc(t.phone):""}${t.email?" · "+esc(t.email):""}${(t.members||[]).length?"<br>Also: "+t.members.map(m=>esc(m.name)+(m.phone||m.email?" ("+[m.phone,m.email].filter(Boolean).map(esc).join(" · ")+")":"")).join(", "):""}${t.vehicle?"<br>"+esc(t.vehicle):""}${t.notes?"<br>"+esc(t.notes):""}</span></td><td>${t.capacity}${t.capEst!=null?`<br><span class="hint">Learned <b>${t.capEst}</b> from ${(t.capObs||[]).length} full load${(t.capObs||[]).length===1?"":"s"}</span>`:""}</td><td>${esc(slotText(t))}${nowSlot(t)?' <span class="chip done">Now</span>':' <span class="chip bad">Outside hours</span>'}</td><td style="white-space:nowrap">${n} run${n===1?"":"s"}<br>${col} tree${col===1?"":"s"}${b?`<br><span class="chip out">Out</span>`:""}</td><td>${teamLinkCell(t,dis)}<div class="tbtns" style="margin-top:6px"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit Team</button><button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button></div></td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -973,7 +974,7 @@ async function act(b,d){
     const list=preview.refs.map(r=>stops.get(r)).filter(s=>s&&s.status===""&&!reserved(s));
     if(list.length!==preview.refs.length){toast("Someone else took some of these stops. Rebuilding.");preview.refs=buildRun(preview.capacity,t).map(s=>s.ref);render();return}
     const n=nextRunNo(), id="R"+Date.now().toString(36), now=new Date().toISOString();
-    const r={id,n,token:DRIVER_URL?(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,""):undefined,teamId:t.id,team:t.name,capacity:preview.capacity,refs:list.map(s=>s.ref),trees:list.reduce((a,s)=>a+s.trees,0),state:"out",sentAt:now,by:me,outside:!t.extra&&!nowSlot(t),extra:!!t.extra};
+    const r={id,n,token:DRIVER_URL?(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,""):undefined,teamId:t.id,team:t.name,capacity:preview.capacity,refs:list.map(s=>s.ref),trees:list.reduce((a,s)=>a+s.trees,0),state:"out",sentAt:now,by:me,outside:!nowSlot(t),extra:!!t.extra};
     if(!await put("runs/"+id,r)) return;
     await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{status:"out",run:id})));
     runs.set(id,r); for(const s of list){const x=stops.get(s.ref); if(x){x.status="out";x.run=id}}
@@ -1062,10 +1063,9 @@ async function act(b,d){
     const contact=$("#t-contact").value.trim(), phone=(p=>{const d=p.replace(/[^\d+]/g,""); return /^0\d{10}$/.test(d)?d.slice(0,5)+" "+d.slice(5):p})($("#t-phone").value.trim()), email=$("#t-email").value.trim(), vehicle=$("#t-vehicle").value;
     if(!contact||!phone||!vehicle){toast("Enter the contact name, phone and vehicle");return}
     if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("That email address doesn't look right");return}
-    const from=$("#t-from").value||"09:00", to=$("#t-to").value||"15:30";
-    const slots=Object.keys(EVENT_DAYS).filter(k=>$("#t-d-"+k).checked).map(day=>({day,from,to}));
+    const slots=readSlots("t"); if(!slots) return;
     const id="t"+Date.now().toString(36);
-    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,extra:$("#t-extra").checked,large:$("#t-large").checked,members:mem("t")})) toast(`${name} added`);
+    if(await put("teams/"+id,{id,name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,large:$("#t-large").checked,members:mem("t")})) toast(`${name} added`);
     return;
   }
   if(d.editteam){ const t=teams.get(d.editteam); if(t&&await editTeam(t)) toast(`${t.name} updated`); return }
@@ -1082,7 +1082,7 @@ render();
   if(!db){render();return}
   const keep=()=>{const ae=document.activeElement; return ae&&ae.id&&ae.tagName!=="BUTTON"?{id:ae.id,val:ae.value}:null};
   let rdT=null; const redrawSoon=()=>{ clearTimeout(rdT); rdT=setTimeout(redraw,120) };
-  const redraw=()=>{const k=keep(); const vals={}, ticks={}; document.querySelectorAll('#main input[type=checkbox][id]').forEach(c=>ticks[c.id]=c.checked); for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-from","t-to","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-core","area-link","area-max"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
+  const redraw=()=>{const k=keep(); const vals={}, ticks={}; document.querySelectorAll('#main input[type=checkbox][id]').forEach(c=>ticks[c.id]=c.checked); for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-f-fri","t-t-fri","t-f-sat","t-t-sat","t-f-sun","t-t-sun","t-m2e","t-m3e","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-core","area-link","area-max"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
     if(view.tab==="map"&&MAP&&document.getElementById("mapwrap")){ renderTally(); renderTabs(); drawMap() } else render();
     for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id); if(el&&id!=="team-sel") el.value=v; else if(el&&teams.has(v)) el.value=v}
     for(const [id,v] of Object.entries(ticks)){const el=document.getElementById(id); if(el) el.checked=v}
