@@ -461,13 +461,13 @@ function statusText(s){
 function renderMisses(main){
   const ms=[...stops.values()].filter(s=>s.status==="Missed").sort((a,b)=>(a.missedAt||"").localeCompare(b.missedAt||""));
   const closed=[...stops.values()].filter(s=>s.status==="Closed");
-  const toEmail=ms.filter(s=>s.attempts===1&&!s.missedEmailAt&&s.email&&!(MAILTO&&hasPhoto(s))), toEmailN=Math.min(40,toEmail.length), toEmailPh=MAILTO?ms.filter(s=>s.attempts===1&&!s.missedEmailAt&&s.email&&hasPhoto(s)).length:0;
+  const toEmail=ms.filter(s=>s.attempts===1&&!s.missedEmailAt&&s.email), toEmailN=toEmail.length;
   const replied=ms.filter(s=>s.replyAt&&s.attempts===1);
   const dis=canWrite&&(MAILTO||mcp)?"":"disabled";
   main.innerHTML=`
-  <div class="card"><div class="hint">First miss: email the customer and ask them to reply once the tree is out. ${MAILTO?"Emails open in your own email program; check and press Send. Replies come to your inbox: tap <b>Customer replied</b> on the card when one arrives.":"Replies are found in your Outlook inbox."} One rebook only. A second miss gets a final email and the stop is closed.</div>
-   <div class="row"><button class="btn bad" data-emailall ${dis||(!toEmail.length?"disabled":"")}>Email ${toEmailN}${toEmail.length>40?` of ${toEmail.length}`:""} customer${toEmailN===1?"":"s"}</button>
-   <button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>${toEmailPh?`<div class="hint">${toEmailPh} customer${toEmailPh===1?" has":"s have"} a driver's photo, so ${toEmailPh===1?"isn't":"aren't"} in the group email. Tap <b>Email customer</b> on ${toEmailPh===1?"that card":"each of those cards"}: the email includes a link to their photo.</div>`:""}
+  <div class="card"><div class="hint">First miss: email the customer. They can tell us from the link in the email that the tree is out (it goes straight back on the list) or that it's not needed (it closes), or reply to the email. ${MAILTO?"Emails open in your own email program; check and press Send. Replies come to your inbox: tap <b>Customer replied</b> on the card when one arrives.":"Replies are found in your Outlook inbox."} One rebook only. A second miss gets a final email and the stop is closed.</div>
+   <div class="row"><button class="btn bad" data-emailall ${dis||(!toEmail.length?"disabled":"")}>Email ${toEmailN} customer${toEmailN===1?"":"s"}</button>
+   <button class="btn" data-rebookall ${canWrite&&replied.length?"":"disabled"}>Rebook ${replied.length} replied</button></div>${MAILTO&&toEmailN?`<div class="hint">Each customer gets their own email with a link to tell us their tree is out (or not needed), plus the driver's photo if there is one. The emails open one after another: press Send, then <b>I've sent it</b> for the next. <b>Cancel</b> stops.</div>`:""}
    </div>
   ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are isolated: more than ${AREA.core} km from Bromsgrove with no other booking within ${AREA.link} km, or more than ${AREA.max} km away. Each one costs a team about half an hour for one tree, so they're not planned. Up to ${AUTH_KM} km, the office can tap <b>Authorise collection</b> and it goes on the list. Otherwise email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
   <div class="row" style="margin-bottom:8px"><button class="btn bad" data-oaemailall ${canWrite&&(MAILTO||mcp)&&oa.some(s=>!s.oaEmailAt&&s.email)?"":"disabled"}>Email ${oa.filter(s=>!s.oaEmailAt&&s.email).length} out-of-area customer${oa.filter(s=>!s.oaEmailAt&&s.email).length===1?"":"s"}</button></div><div class="list">${oa.map(s=>`<div class="miss" style="border-color:var(--bad)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip bad">${s.lat==null?"Postcode not found":areaWhy(s)}</span></div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")}</div>${s.oaEmailAt?`<div><span class="chip warn">Emailed ${tm(s.oaEmailAt)}: refund via office</span></div>`:""}<div class="steps">${s.oaEmailAt?"":`<button class="btn bad" data-oaemail="${s.ref}" ${canWrite&&(MAILTO||mcp)&&s.email?"":"disabled"}>Email customer</button>`}${s.lat!=null&&km(s,DEPOT)<=AUTH_KM?`<button class="btn" data-oaauth="${s.ref}" ${canWrite?"":"disabled"}>Authorise collection</button>`:`<span class="hint">Over ${AUTH_KM} km: can't be authorised</span>`}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-oaremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button></div></div>`).join("")}</div>`:""})()}
@@ -873,12 +873,12 @@ function confirmBox(title,text,okLabel){
 }
 const hasPhoto=s=>!!(s&&s.photoAt&&s.photoKind==="missed");
 function photoLink(k){ return location.origin+location.pathname.replace(/[^/]*$/,"")+"photo.html#"+k }
-async function ensurePhotoKey(s){ if(!hasPhoto(s)||s.photoKey) return true;
+async function ensurePhotoKey(s,kind){ if(s.photoKey||(kind!=="missed"&&!hasPhoto(s))) return true;
   const a=new Uint8Array(24); crypto.getRandomValues(a); const k=[...a].map(x=>x.toString(16).padStart(2,"0")).join("");
   if(!await patch("stops/"+sid(s.ref),{photoKey:k})) return false; s.photoKey=k; return true }
 function emailBodies(s,kind){
   const first=String(s.name||"").split(" ")[0]||"there";
-  const pic=hasPhoto(s)&&s.photoKey?`<p>Our volunteers took a photo when they called. You can see it, and tell us straight away if your tree is now out or no longer needs collecting: <a href="${esc(photoLink(s.photoKey))}">See the photo</a></p>`:"";
+  const pic=!s.photoKey?"":hasPhoto(s)?`<p>Our volunteers took a photo when they called. You can see it, and tell us straight away if your tree is now out or no longer needs collecting: <a href="${esc(photoLink(s.photoKey))}">See the photo</a></p>`:kind==="missed"?`<p>You can tell us straight away if your tree is now out or no longer needs collecting: <a href="${esc(photoLink(s.photoKey))}">Tell us here</a></p>`:"";
   const ref=`PHTC-${s.ref}`;
   if(kind==="outarea") return {
     subject:`Your Christmas tree collection: outside our collection area [${ref}]`,
@@ -903,7 +903,7 @@ function mcpMsg(e){
 }
 async function sendEmail(s,kind){
   if(!s.email){toast(`No email address for ${s.name}`);return false}
-  if(kind!=="outarea"&&!await ensurePhotoKey(s)){ toast("Couldn't set up the photo link. Try again."); return false }
+  if(kind!=="outarea"&&!await ensurePhotoKey(s,kind)){ toast("Couldn't set up the customer link. Try again."); return false }
   const {subject,body}=emailBodies(s,kind);
   if(MAILTO){ return await openMail({to:[s.email],subject,body}) }
   try{ await mcp.callTool(M365,"outlook_send_mail",{to:[s.email],subject,body,bodyType:"html"}); return true }
@@ -982,12 +982,10 @@ async function act(b,d){
   if(d.replied){ const s=stops.get(+d.replied); if(await patch("stops/"+sid(s.ref),{replyAt:new Date().toISOString(),replyBy:me||""})) toast(`${s.name} marked as replied. Tap Rebook to send a team again.`); return }
   if(d.email){ const s=stops.get(+d.email); if(await sendEmail(s,"missed")){ await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
   if("emailall" in d){
-    if(MAILTO){ const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt&&s.email&&!hasPhoto(s)).slice(0,40); if(!list.length){toast("No one to email in a group. Customers with a photo: tap Email customer on their card.");return}
-      if(!await openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: we couldn't find your tree",text:"Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers called at your address but couldn't find your tree.\n\nIf your tree is now out and ready, please reply to this email with your name and address and we'll arrange one more visit before the end of Sunday 10 January. Please leave it somewhere our volunteers can see it from the road, for example at the front of the house or by the drive.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice TreeCycle 2027\nRegistered Charity No. 700272"})) return;
-      const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{missedEmailAt:now,emailBulk:true}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
-    const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt);
-    let n=0; for(const s of list){ b.textContent=`Sending ${n+1} of ${list.length}…`; if(!await sendEmail(s,"missed")) break; await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); n++; await new Promise(r=>setTimeout(r,1200)) }
-    toast(`${n} email${n===1?"":"s"} sent`); render(); return;
+    const list=[...stops.values()].filter(s=>s.status==="Missed"&&s.attempts===1&&!s.missedEmailAt&&s.email);
+    if(!list.length){ toast("No one to email"); return }
+    let n=0; for(const s of list){ b.textContent=`${MAILTO?"Email":"Sending"} ${n+1} of ${list.length}…`; if(!await sendEmail(s,"missed")) break; await patch("stops/"+sid(s.ref),{missedEmailAt:new Date().toISOString()}); n++; if(!MAILTO) await new Promise(r=>setTimeout(r,1200)) }
+    toast(`${n} email${n===1?"":"s"} ${MAILTO?"done":"sent"}${n<list.length?` · ${list.length-n} still to email`:""}`); render(); return;
   }
   if(d.oaemail){ const s=stops.get(+d.oaemail); if(await sendEmail(s,"outarea")){ await patch("stops/"+sid(s.ref),{oaEmailAt:new Date().toISOString()}); toast(`Emailed ${s.name}`) } return }
   if("oaemailall" in d&&MAILTO){ const list=[...stops.values()].filter(s=>outArea(s)&&!s.oaEmailAt&&s.email).slice(0,40); if(!list.length) return; if(!await openMail({bcc:list.map(s=>s.email),subject:"Your Christmas tree collection: outside our collection area",text:`Hello,\n\nThank you for booking a Christmas tree collection with Primrose Hospice. Our volunteers collect in and around Bromsgrove and Redditch, and the address you gave us is outside our collection area, so we can't collect your tree.\n\nPlease contact the office${officeNo()?" on "+officeNo():""} to arrange a refund.\n\nThank you for supporting Primrose Hospice.\n\nPrimrose Hospice TreeCycle 2027\nRegistered Charity No. 700272`})) return; const now=new Date().toISOString(); await Promise.all(list.map(s=>patch("stops/"+sid(s.ref),{oaEmailAt:now}))); toast(`One email opened to ${list.length} customer${list.length===1?"":"s"} (BCC). Check it and press Send.`); render(); return }
