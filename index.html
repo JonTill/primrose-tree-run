@@ -592,6 +592,7 @@ function editTeam(t,su){   // su = a sign-up being reviewed: Approve adds it as 
       const slots=readSlots("et",d); if(!slots) return;
       b.disabled=true;
       const vals={name:name.slice(0,60),capacity:Math.min(cap,60),contact:contact.slice(0,80),phone:phone.slice(0,30),email:email.slice(0,120),vehicle,slots,notes:q("#et-notes").value.trim().slice(0,300),large:q("#et-large").checked,members:mem("et")};
+      if(su&&!await overMax(" Sign-ups waiting count towards the limit too.")){ b.disabled=false; return }
       if(su){ const id="t"+Date.now().toString(36); const ok=await put("teams/"+id,{id,...vals,signupId:su.id,...(su.teamToken?{teamToken:su.teamToken,teamTokenAt:new Date().toISOString()}:{})});
         if(ok){ await patch("signups/"+su.id,{status:"added",teamId:id,doneAt:new Date().toISOString(),doneBy:me}); toast(su.teamToken?`${vals.name} approved. Their sign-up link is now their team link.`:`${vals.name} approved and added`); close(true) } else b.disabled=false; return }
       const ok=await patch("teams/"+t.id,vals);
@@ -638,10 +639,14 @@ function editStop(s){
 
 /* ---------- team self-serve links ---------- */
 const newSignups=()=>[...signups.values()].filter(s=>s.status==="new").sort((a,b)=>String(a.submittedAt).localeCompare(String(b.submittedAt)));
+const MAX_TEAMS=()=>Math.max(1,parseInt(settings.maxTeams,10)||15);
+async function overMax(extra){ const n=teams.size+1, mx=MAX_TEAMS(); if(n<=mx) return true; return await confirmBox("Over the team limit",`That makes ${n} teams, over your limit of ${mx}.${extra||""} Add it anyway?`,"Add anyway") }
 const SIGNUP_URL=()=>location.href.split("#")[0].replace(/[^/]*$/,"")+"signup.html";
 function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==false;
   const slot=s=>(s.slots||[]).map(x=>`${DAY_LABEL[x.day]||x.day} ${x.from}–${x.to}`).join(", ");
   return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. Each sign-up waits below until you review it: tap <b>Review</b>, check or change the details, then approve (it's added to the teams list) or decline. Each volunteer gets their team link as soon as they sign up; it shows "waiting for approval" until you approve them, then it works as their team page.${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
+   <div class="hint" style="margin-top:6px">Teams: <b>${teams.size}</b> of <b>${MAX_TEAMS()}</b>${ns.length?` · ${ns.length} waiting for approval`:""}${teams.size+ns.length>=MAX_TEAMS()?` · <b style="color:var(--bad)">Full: the sign-up page now says you have all the teams you need</b>`:` · ${MAX_TEAMS()-teams.size-ns.length} place${MAX_TEAMS()-teams.size-ns.length===1?"":"s"} left`}</div>
+   <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="flex:0 1 120px"><label for="su-max">Team limit</label><input id="su-max" type="number" min="1" max="200" value="${MAX_TEAMS()}"></div><button class="btn ghost" data-sumax ${dis}>Save limit</button></div>
    <div class="row" style="margin-top:8px"><button class="btn" data-cpsignup>Copy sign-up link</button><button class="btn ghost" data-suopen="${open?"0":"1"}" ${dis}>${open?"Close sign-ups":"Open sign-ups"}</button></div>
    <h3 style="${ns.length?"color:var(--bad)":""}">Sign-ups to approve (${ns.length})</h3>
    ${ns.length?`<div class="list">${ns.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.capacity} trees per load</b><span class="chip warn">Sent ${esc(tm(s.submittedAt))}</span></div>
@@ -1060,6 +1065,7 @@ async function act(b,d){
     if(await patch("teams/"+t.id,{teamToken:d.renew?newTeamToken():signupToken(t),teamTokenAt:new Date().toISOString()})) toast(`Link ready for ${t.name}. Tap Copy Link to send it.`); return }
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
   if("cpsignup" in d){ const ok=await copyText(SIGNUP_URL()); if(ok) toast("Sign-up link copied"); else if(ok===false) toast("Couldn't copy"); return }
+  if("sumax" in d){ const v=parseInt($("#su-max").value,10); if(!(v>=1&&v<=200)){toast("Enter a team limit from 1 to 200");return} if(await patch("settings/main",{maxTeams:v})) toast(`Team limit set to ${v}`); return }
   if(d.suopen){ if(await patch("settings/main",{signupOpen:d.suopen==="1"})) toast(d.suopen==="1"?"Sign-ups open":"Sign-ups closed"); return }
   if(d.sureview){ const s=signups.get(d.sureview); if(!s||s.status!=="new") return; await editTeam({name:s.name,capacity:s.capacity,contact:s.contact,phone:s.phone,email:s.email,vehicle:s.vehicle,slots:s.slots||[],large:!!s.large,members:s.members||[],notes:s.notes||""},s); return }
   if(d.sudecl){ const s=signups.get(d.sudecl); if(!s) return; if(!await confirmBox("Decline sign-up?",`${s.name} won't be added as a team.`,"Decline")) return; if(await patch("signups/"+s.id,{status:"declined",doneAt:new Date().toISOString(),doneBy:me})) toast(`${s.name} declined`); return }
@@ -1082,7 +1088,7 @@ async function act(b,d){
   if("planreset" in d){ if(!await confirmBox("Put the plan back to the defaults?","This-year and past-year figures are kept.","Reset")) return; if(await patch("settings/main",{plan:null})) toast("Plan back to defaults"); return }
   if("savearea" in d){ const c=parseFloat($("#area-core").value), l=parseFloat($("#area-link").value), m=parseFloat($("#area-max").value); if(!(c>=2&&c<=30&&l>=0.5&&l<=10&&m>=5&&m<=40&&m>=c)){ toast("Check the figures: always-collect 2 to 30 km, nearby booking 0.5 to 10 km, never beyond 5 to 40 km and not less than always-collect"); return } if(await patch("settings/main",{areaCore:c,areaLink:l,areaMax:m})) toast(`Collection area saved: ${c} km, then ${l} km to the next booking, up to ${m} km`); return }
   if("saveoffice" in d){ const v=$("#office-phone").value.trim().slice(0,30); if(await patch("settings/main",{officePhone:v})) toast(v?`Office mobile set to ${v}`:"Office mobile removed"); return }
-  if("addteam" in d){
+  if("addteam" in d){ if(!await overMax()) return;
     const name=$("#t-name").value.trim(); const cap=parseInt($("#t-cap").value,10);
     if(!name||!(cap>=8&&cap<=25)){toast("Enter a team name and trees per load (8 to 25)");return}
     const contact=$("#t-contact").value.trim(), phone=(p=>{const d=p.replace(/[^\d+]/g,""); return /^0\d{10}$/.test(d)?d.slice(0,5)+" "+d.slice(5):p})($("#t-phone").value.trim()), email=$("#t-email").value.trim(), vehicle=$("#t-vehicle").value;
@@ -1107,7 +1113,7 @@ render();
   if(!db){render();return}
   const keep=()=>{const ae=document.activeElement; return ae&&ae.id&&ae.tagName!=="BUTTON"?{id:ae.id,val:ae.value}:null};
   let rdT=null; const redrawSoon=()=>{ clearTimeout(rdT); rdT=setTimeout(redraw,120) };
-  const redraw=()=>{const k=keep(); const vals={}, ticks={}; document.querySelectorAll('#main input[type=checkbox][id]').forEach(c=>ticks[c.id]=c.checked); for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","t-f-fri","t-t-fri","t-f-sat","t-t-sat","t-f-sun","t-t-sun","t-m2e","t-m3e","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-core","area-link","area-max"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
+  const redraw=()=>{const k=keep(); const vals={}, ticks={}; document.querySelectorAll('#main input[type=checkbox][id]').forEach(c=>ticks[c.id]=c.checked); for(const id of ["team-sel","cap","t-name","t-cap","t-contact","t-phone","t-email","t-vehicle","su-max","t-f-fri","t-t-fri","t-f-sat","t-t-sat","t-f-sun","t-t-sun","t-m2e","t-m3e","office-phone","t-m2n","t-m2p","t-m3n","t-m3p","new-user","area-core","area-link","area-max"]){const el=document.getElementById(id); if(el) vals[id]=el.value}
     if(view.tab==="map"&&MAP&&document.getElementById("mapwrap")){ renderTally(); renderTabs(); drawMap() } else render();
     for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id); if(el&&id!=="team-sel") el.value=v; else if(el&&teams.has(v)) el.value=v}
     for(const [id,v] of Object.entries(ticks)){const el=document.getElementById(id); if(el) el.checked=v}
