@@ -80,7 +80,7 @@ footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padd
   if(sb) sb.rpc("event_info").then(({data:e})=>{ if(!e||!/^\d{4}-\d{2}-\d{2}$/.test(e.eventStart||"")) return;
     const D=(n,o)=>{const d=new Date(e.eventStart+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toLocaleDateString("en-GB",{timeZone:"UTC",...o})};
     const yr=D(2,{year:"numeric"}), same=D(0,{month:"long"})===D(2,{month:"long"});
-    $("evr").textContent=`${D(0,{weekday:"long",day:"numeric",...(same?{}:{month:"long"})})} to ${D(2,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`;
+    $("evr").textContent=`${D(0,{weekday:"long",day:"numeric",...(same?{}:{month:"long"})})} to ${D(2,{weekday:"long",day:"numeric",month:"long"})} ${yr}`;
     $("evf").textContent="Primrose Hospice TreeCycle "+yr; document.title="Volunteer team sign-up · Primrose Hospice TreeCycle "+yr;
     DAYS.forEach(([k],i)=>{ $("dl-"+k).textContent=D(i,{weekday:"long",day:"numeric",month:"long"}) }) }).catch(()=>{});
   if(sb) sb.rpc("signup_state").then(({data:s})=>{ if(s&&s.open===false) shut(CLOSED); else if(s&&s.full) shut(FULL) }).catch(()=>{});
