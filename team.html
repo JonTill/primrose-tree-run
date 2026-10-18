@@ -209,6 +209,20 @@ function getPos(timeout){return new Promise(res=>{ if(!navigator.geolocation) re
 let PC=null; async function pcLookup(p){ if(!PC) PC=await fetch("postcodes.json").then(r=>r.json()); const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1]}; const s=PC.sector[k.slice(0,-2)]; return s?{lat:s[0],lon:s[1]}:null }
 function netLine(ok){ const e=$("#net"); if(!e) return; if(ok){ lastOk=Date.now(); e.hidden=true; return }
   e.hidden=false; e.textContent="No signal"+(lastOk?" · last updated "+new Date(lastOk).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"")+". It will catch up when you have signal." }
+const EV={start:"2027-01-08",mode:"demo"};
+const evD=(n,o)=>{const d=new Date(EV.start+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toLocaleDateString("en-GB",{timeZone:"UTC",...o})};
+const evYear=()=>evD(2,{year:"numeric"});
+const evRange=()=>`${evD(0,{weekday:"long",day:"numeric",...(evD(0,{month:"long"})===evD(2,{month:"long"})?{}:{month:"long"})})} to ${evD(2,{weekday:"long",day:"numeric",month:"long"})}`;
+const DAYN={fri:0,sat:1,sun:2};
+const slotTxt=x=>x?`${evD(DAYN[x.day]??0,{weekday:"long",day:"numeric",month:"short"})}, ${x.from}–${x.to}`:"";
+function earlyFrom(x){ const [h,m]=x.from.split(":").map(Number), t=h*60+m-15; return String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0") }
+// start button, or the out-of-hours card (Live mode only)
+function startGate(label){ const h=data.hours;
+  if(!h||h.ok) return `${h&&h.why==="approved"?'<div class="crewnote">The office has approved an early start for one run.</div>':""}<button class="btn bigbtn" data-start>${label}</button>`;
+  const rq=h.request||{}, mine=(h.slots||[]).map(slotTxt).filter(Boolean);
+  const req=rq.status==="pending"?`<div class="crewnote">Early start requested. Waiting for the office… this page updates by itself.</div><button class="btn ghost" data-hrcheck>Check again</button>`
+    :`${rq.status==="declined"?'<div class="crewnote">The office said not yet. Please start at your agreed time.</div>':""}<button class="btn ghost" data-esreq>Ask the office to start early</button>`;
+  return `<div class="endp"><h2>${h.next?"Not your time yet":"Outside your agreed times"}</h2><div class="sub">${h.next?`Your next time is <b>${esc(slotTxt(h.next))}</b>. You can start a run from ${earlyFrom(h.next)}.`:"Your team has no more agreed times this weekend."}</div>${mine.length?`<div class="sub">Your agreed times: ${esc(mine.join(" · "))}</div>`:""}${req}</div>` }
 async function rpc(fn,args,quiet){ let r; try{ r=await sb.rpc(fn,args) }catch(e){ r={error:e} }
   if(r.error){ netLine(false); if(!quiet) toast("No signal? Try again in a moment."); return null } netLine(true); return r.data||{} }
 async function load(withPos){
@@ -220,6 +234,8 @@ async function load(withPos){
   if(my!==loadSeq) return;
   if(!d){ if(!data){ $("#sub").textContent=""; $("#main").innerHTML=`<div class="empty">Couldn't load your team page. Check your signal and tap Try again. If it keeps happening, call the office.</div><button class="btn" onclick="load()">Try again</button>` } return }
   if(d.error==="not_found"){ const s=await rpc("signup_status",{p_token:teamToken},true); if(my!==loadSeq) return; if(s&&(s.state==="pending"||s.state==="declined"||s.state==="replaced")) d.error=s.state, d.name=s.name }   // a sign-up link that hasn't been approved yet
+  if(!d.error){ const h=await rpc("team_hours",{p_token:teamToken},true); if(my!==loadSeq) return; if(h&&!h.error){ d.hours=h; EV.start=h.eventStart||EV.start; EV.mode=h.mode||EV.mode } }
+  else if(!EV.got){ const e=await rpc("event_info",{},true); if(e&&e.eventStart){ EV.start=e.eventStart; EV.mode=e.mode; EV.got=1 } }
   data=d; token=d.run?.token||""; render();
   } finally { loading=false; if(loadAgain!==null){ const w=loadAgain; loadAgain=null; setTimeout(()=>load(w),0) } }
   if(!role&&data&&!data.error&&!rolePick.open){ rolePick.open=true; const v=await rolePick(); rolePick.open=false; setRole(v) } }
@@ -236,12 +252,12 @@ function progBlock(){ const p=data.report||{}, done=+p.eventTrees||0, left=+p.ev
 function statBlock(){ const p=data.report||{}; return `<div class="stat"><div><b>${p.todayTrees||0}</b><span>Trees today</span></div><div><b>${p.todayRuns||0}</b><span>Runs today</span></div><div><b>${p.allTrees||0}</b><span>All weekend</span></div></div>` }
 function render(){
   const m=$("#main"); if(!data){m.innerHTML="";return}
-  if(data.error==="pending"){ $("#title").textContent=data.name||"Your team"; $("#sub").textContent="Waiting for approval"; m.innerHTML=`<div class="endp"><h2>Thanks for signing up!</h2><div class="sub">The office hasn't approved your sign-up yet. Keep this link: once you're approved, this page becomes your team's page for the collection weekend (Friday 8 to Sunday 10 January).</div><div class="sub">Tip: add it to your home screen or bookmark it so it's easy to find.</div><button class="btn" onclick="load()">Check again</button></div>`; return }
+  if(data.error==="pending"){ $("#title").textContent=data.name||"Your team"; $("#sub").textContent="Waiting for approval"; m.innerHTML=`<div class="endp"><h2>Thanks for signing up!</h2><div class="sub">The office hasn't approved your sign-up yet. Keep this link: once you're approved, this page becomes your team's page for the collection weekend (${evRange()}).</div><div class="sub">Tip: add it to your home screen or bookmark it so it's easy to find.</div><button class="btn" onclick="load()">Check again</button></div>`; return }
   if(data.error==="declined"){ $("#title").textContent=data.name||"Your team"; $("#sub").textContent=""; m.innerHTML=`<div class="empty">Thank you for offering to help. The office doesn't need this team this time. If you think that's a mistake, please contact Primrose Hospice.</div>`; return }
   if(data.error==="replaced"){ $("#title").textContent=data.name||"Your team"; $("#sub").textContent=""; m.innerHTML=`<div class="empty">Your sign-up has been approved, but the office has given your team a new link. Please use the link they sent you, or ask the office for it.</div>`; return }
   if(data.error){ $("#sub").textContent=""; m.innerHTML=`<div class="empty">This link isn't valid. Ask the office for your team's link.</div>`; return }
   const t=data.team, r=data.run, ph=(view==="gohome"&&phase()==="done")?"home":phase(), call=data.office?`<a class="btn ghost" href="tel:${esc(data.office.replace(/\s/g,""))}">Call office ${esc(data.office)}</a>`:"";
-  $("#title").textContent=t.name; document.title=t.name+" · TreeCycle 2027";
+  $("#title").textContent=t.name; document.title=t.name+" · TreeCycle "+evYear();
   if(t.paused&&ph!=="live"){ $("#sub").textContent=""; m.innerHTML=`<div class="empty">The office has paused your link. Please call them.</div><div class="bar">${call}</div>`; return }
   if(view==="summary"&&ph!=="live"){ const p=data.report||{};
     $("#sub").textContent="What we've done";
@@ -274,7 +290,7 @@ function render(){
     m.innerHTML=`<div class="endp"><h2>Unloading at ${esc(dpOf(r).name)}</h2><div class="sub">Unload your ${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} where you're shown. Tap the button once the van is empty.</div>${crew()?`<div class="crewnote">The driver's phone taps Unloaded.</div>`:`<button class="btn blue" data-st="driver_unloaded">Unloaded</button>`}</div>${roleBar()}<div class="bar">${call}</div>`; return }
   if(ph==="choose"){ $("#sub").textContent=`Run ${r.n} done`;
     m.innerHTML=`<div class="endp"><h2>Unloaded. Thank you!</h2><div class="sub">Run ${r.n}: ${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} collected. Ready for more?</div>
-      ${crew()?`<div class="crewnote">The driver's phone starts the next run.</div>`:`${data.selfService?`<button class="btn bigbtn" data-start>Start another run</button>`:`<div class="sub">Call the office if you'd like another run.</div>`}
+      ${crew()?`<div class="crewnote">The driver's phone starts the next run.</div>`:`${data.selfService?startGate("Start another run"):`<div class="sub">Call the office if you'd like another run.</div>`}
       <button class="btn blue" data-st="driver_done">We're done for the day</button>`}</div>${statBlock()}${roleBar()}<div class="bar">${call}</div>`; return }
   if(ph==="done"){ const p=data.report||{}; $("#sub").textContent="";
     m.innerHTML=`<div class="thanks"><h2>Thank you, ${esc(t.name)}!</h2><div class="tl">Today your team collected</div><div class="bigno">${p.todayTrees||0}</div><div class="tl">Christmas trees for Primrose Hospice</div>
@@ -284,8 +300,8 @@ function render(){
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>
       <button class="btn ghost" data-v="gohome">Home page</button>`; return }
   // home
-  $("#sub").textContent=t.large?"Your team can take large trees":"Primrose Hospice TreeCycle 2027";
-  m.innerHTML=`<div class="home">${progBlock()}${crew()?`<div class="crewnote">Crew phone: this page follows the driver's phone. When the driver starts a run, your collections appear here.</div>`:data.selfService?`<button class="btn bigbtn" data-start>Let's go get some trees!</button>`:`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
+  $("#sub").textContent=t.large?"Your team can take large trees":"Primrose Hospice TreeCycle "+evYear();
+  m.innerHTML=`<div class="home">${data.hours&&data.hours.mode==="demo"?'<div class="crewnote"><b>Practice mode.</b> Runs can start at any time.</div>':""}${progBlock()}${crew()?`<div class="crewnote">Crew phone: this page follows the driver's phone. When the driver starts a run, your collections appear here.</div>`:data.selfService?startGate("Let's go get some trees!"):`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
     <button class="btn ghost" data-v="summary">What we've done</button>${crew()?"":`<button class="btn blue" data-logoff>We're done for the day</button>`}${statBlock()}<div class="sub">You'll get one collection at a time, planned as a full load for your vehicle (about ${t.target||10} trees). Mark each one and the next appears. When the vehicle's full, tap <b>Van full</b>; if you have to come back early, tap <b>Head back, not full</b>.</div>${roleBar()}<div class="bar">${call}</div></div>`;
 }
 function whereStart(){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
@@ -302,10 +318,13 @@ function whereStart(){return new Promise(res=>{const m=document.createElement("d
 document.addEventListener("click",async e=>{
   const v=e.target.closest("[data-v]"); if(v){view=v.dataset.v;render();window.scrollTo(0,0);return}
   if(busy){ if(e.target.closest("button")) toast("Still saving… one moment"); return }
+  if(e.target.closest("[data-hrcheck]")){ await load(); return }
+  if(e.target.closest("[data-esreq]")){ busy=true; const res=await rpc("team_request_start",{p_token:teamToken}); busy=false;
+    if(res&&!res.error) toast(res.already_ok?"You can start now":"Request sent to the office"); await load(); return }
   const st=e.target.closest("[data-start]");
   if(st){ const p=await whereStart(); if(p===undefined) return; busy=true; st.disabled=true; st.textContent="Finding your first collection…";
     const res=await rpc("team_start",{p_token:teamToken,p_lat:p?.lat??null,p_lon:p?.lon??null,p_acc:p?.acc??null}); busy=false;
-    if(res&&res.error) toast(res.error==="none_left"?"There are no collections waiting. Thank you!":res.error==="paused"?"The office has paused your link.":res.error==="switched_off"?"The office will send your runs.":"Couldn't start a run. Call the office.");
+    if(res&&res.error) toast(res.error==="none_left"?"There are no collections waiting. Thank you!":res.error==="paused"?"The office has paused your link.":res.error==="switched_off"?"The office will send your runs.":res.error==="out_of_hours"?"It's outside your agreed times. Ask the office to start early.":"Couldn't start a run. Call the office.");
     view="home"; await load(); window.scrollTo(0,0); return }
   const mk=e.target.closest("button[data-mk]");
   if(mk){ const cur=(data.jobs||[])[0]; if(!cur) return; const v2=mk.dataset.mk;
