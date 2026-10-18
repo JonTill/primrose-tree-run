@@ -105,6 +105,7 @@ option{color:var(--fg)}
 table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
 th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.evcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;max-width:460px}.evcal .evh{font-size:.75rem;color:var(--muted);text-align:center}.evd{display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 0;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:.72rem}.evd b{font-size:.95rem}.evd input{margin:0}.evd:has(input:checked){background:#fff3c4;border-color:#e0b400}
 .days{display:flex;gap:10px;flex-wrap:wrap}.slots{display:flex;flex-direction:column;gap:6px}.slotrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.slotrow label{font-weight:600;display:flex;gap:6px;align-items:center;min-width:80px}.slotrow input[type=time]{width:auto}
 .days label{font-weight:600;display:flex;gap:4px;align-items:center}
 footer{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.8rem}
@@ -170,15 +171,25 @@ details.hq{background:var(--surface);border:1px solid var(--line);border-radius:
 
 <script>
 const DEPOT={lat:52.32057,lon:-2.0442,addr:"Primrose Hospice, St Godwalds Road, Bromsgrove B60 3BW"};   // Primrose HQ: centre of the collection area and the fallback drop-off
-let EVENT_DAYS={}, DAY_LABEL={}, EV_START="", EV_YEAR="2027";   // collection weekend: settings/main.eventStart (the Friday)
+let EVENT_DAYS={}, DAY_LABEL={}, EV_LIST=[], EV_START="2027-01-08", EV_YEAR="2027";   // collection days: settings/main.eventDays (ISO dates, up to 7 in January)
+const LEGACY={fri:0,sat:1,sun:2};   // old team times used fri/sat/sun from settings.eventStart
 const addDays=(iso,n)=>{const d=new Date(iso+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10)};
 const evFmt=(iso,o)=>new Date(iso+"T12:00:00Z").toLocaleDateString("en-GB",{timeZone:"UTC",...o});
-function evRange(long){ const f=EVENT_DAYS.fri, u=EVENT_DAYS.sun, same=f.slice(5,7)===u.slice(5,7);
-  return long?`${evFmt(f,{weekday:"long",day:"numeric",...(same?{}:{month:"long"})})} to ${evFmt(u,{weekday:"long",day:"numeric",month:"long"})}`
-             :`${evFmt(f,{weekday:"short",day:"numeric",...(same?{}:{month:"long"})})} – ${evFmt(u,{weekday:"short",day:"numeric",month:"long"})}` }
-function setEvent(start){ if(!/^\d{4}-\d{2}-\d{2}$/.test(start||"")) start="2027-01-08"; EV_START=start; EV_YEAR=addDays(start,2).slice(0,4);
-  EVENT_DAYS={fri:start,sat:addDays(start,1),sun:addDays(start,2)};
-  DAY_LABEL=Object.fromEntries(Object.entries(EVENT_DAYS).map(([k,d])=>[k,evFmt(d,{weekday:"short",day:"numeric"})]));
+const isoD=k=>/^\d{4}-\d{2}-\d{2}$/.test(k||"");
+const normDay=k=>isoD(k)?k:(k in LEGACY?addDays(EV_START,LEGACY[k]):k);
+const dayLbl=k=>DAY_LABEL[k]||(isoD(normDay(k))?evFmt(normDay(k),{weekday:"short",day:"numeric",month:"short"}):k);
+const lastDay=()=>EV_LIST[EV_LIST.length-1];
+function evRange(long){ const L=EV_LIST, W=long?"long":"short", grp=[]; let i=0;
+  while(i<L.length){ let j=i; while(j+1<L.length&&addDays(L[j],1)===L[j+1]) j++; grp.push([L[i],L[j]]); i=j+1 }
+  const one=(d,m)=>evFmt(d,{weekday:W,day:"numeric",...(m?{month:"long"}:{})});
+  const parts=grp.map(([a,b],n)=>{ const mEnd=n===grp.length-1||b.slice(5,7)!==grp[n+1][0].slice(5,7);
+    return a===b?one(a,mEnd):`${one(a,a.slice(5,7)!==b.slice(5,7))}${long?" to ":" – "}${one(b,mEnd)}` });
+  return parts.length>1?parts.slice(0,-1).join(", ")+" and "+parts[parts.length-1]:(parts[0]||"") }
+function setEvent(days,start){ EV_START=isoD(start)?start:"2027-01-08";
+  let L=(Array.isArray(days)?days:[]).filter(isoD); if(!L.length) L=[0,1,2].map(n=>addDays(EV_START,n));
+  EV_LIST=[...new Set(L)].sort(); EV_YEAR=lastDay().slice(0,4);
+  EVENT_DAYS=Object.fromEntries(EV_LIST.map(d=>[d,d]));
+  DAY_LABEL=Object.fromEntries(EV_LIST.map(d=>[d,evFmt(d,{weekday:"short",day:"numeric"})]));
   const set=(id,t)=>{const e=document.getElementById(id); if(e) e.textContent=t};
   set("evsub",`${evRange()} · Registered Charity No. 700272`); set("evh1",`Primrose Hospice TreeCycle ${EV_YEAR}`); document.title=`Primrose Hospice TreeCycle ${EV_YEAR}` }
 setEvent();
@@ -254,20 +265,20 @@ function renderTabs(){
 function nowSlot(team,now=new Date()){
   const date=now.toLocaleDateString("en-CA",{timeZone:"Europe/London"});
   const hm=now.toLocaleTimeString("en-GB",{timeZone:"Europe/London",hour:"2-digit",minute:"2-digit",hour12:false});
-  return (team.slots||[]).some(s=>EVENT_DAYS[s.day]===date && s.from<=hm && hm<s.to);
+  return (team.slots||[]).some(s=>normDay(s.day)===date && EVENT_DAYS[date] && s.from<=hm && hm<s.to);
 }
 function who(t){t=t||{};return [t.contact,t.phone].filter(Boolean).join(" · ")}
 function whoRun(r){return who(teams.get(r&&r.teamId))}
 function runOf(n){for(const r of runs.values()) if(r.n===n) return r; return null}
 const mem=pre=>[2,3].map(n=>({name:(document.getElementById(pre+"-m"+n+"n")?.value||"").trim().slice(0,80),phone:(document.getElementById(pre+"-m"+n+"p")?.value||"").trim().slice(0,30),email:(document.getElementById(pre+"-m"+n+"e")?.value||"").trim().slice(0,120)})).filter(m=>m.name).map(m=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m.email)?m:{name:m.name,phone:m.phone});
 function teamBusy(id){for(const r of runs.values()) if(r.state==="out"&&r.teamId===id) return r; return null}
-function slotRows(pre,t){ const by={}; (t&&t.slots||[]).forEach(s=>by[s.day]=s);
+function slotRows(pre,t){ const by={}; (t&&t.slots||[]).forEach(s=>by[normDay(s.day)]=s);
   return `<div class="slots">${Object.keys(EVENT_DAYS).map(k=>{const s=by[k]; return `<div class="slotrow"><label><input type="checkbox" id="${pre}-d-${k}" ${s?"checked":""}> ${DAY_LABEL[k]}</label><input type="time" id="${pre}-f-${k}" aria-label="${DAY_LABEL[k]} from" value="${esc(s?.from||"09:00")}"><span class="hint">to</span><input type="time" id="${pre}-t-${k}" aria-label="${DAY_LABEL[k]} to" value="${esc(s?.to||"15:30")}"></div>`}).join("")}</div>` }
 function readSlots(pre,root=document){ const q=id=>root.querySelector("#"+id), out=[];
   for(const k of Object.keys(EVENT_DAYS)){ if(!q(`${pre}-d-${k}`)?.checked) continue; const from=q(`${pre}-f-${k}`).value||"09:00", to=q(`${pre}-t-${k}`).value||"15:30";
     if(to<=from){ toast(`${DAY_LABEL[k]}: the finish time must be after the start`); return null } out.push({day:k,from,to}) }
   return out }
-function slotText(t){return (t.slots||[]).map(s=>`${DAY_LABEL[s.day]||s.day} ${s.from}–${s.to}`).join(", ")||"No times agreed"}
+function slotText(t){return [...(t.slots||[])].sort((a,b)=>normDay(a.day).localeCompare(normDay(b.day))).map(s=>`${dayLbl(s.day)} ${s.from}–${s.to}`).join(", ")||"No times agreed"}
 function teamOptions(sel){
   const all=[...teams.values()].sort((a,b)=>a.name.localeCompare(b.name));
   const groups={now:[],outside:[]};
@@ -663,7 +674,7 @@ const MAX_TEAMS=()=>Math.max(1,parseInt(settings.maxTeams,10)||15);
 async function overMax(extra){ const n=teams.size+1, mx=MAX_TEAMS(); if(n<=mx) return true; return await confirmBox("Over the team limit",`That makes ${n} teams, over your limit of ${mx}.${extra||""} Add it anyway?`,"Add anyway") }
 const SIGNUP_URL=()=>location.href.split("#")[0].replace(/[^/]*$/,"")+"signup.html";
 function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==false;
-  const slot=s=>(s.slots||[]).map(x=>`${DAY_LABEL[x.day]||x.day} ${x.from}–${x.to}`).join(", ");
+  const slot=s=>slotText(s);
   return `<div class="card"><h2>Team sign-up link</h2><div class="hint">Send volunteers this link. They fill in their team, vehicle and the times they can do each day. Each sign-up waits below until you review it: tap <b>Review</b>, check or change the details, then approve (it's added to the teams list) or decline. Each volunteer gets their team link as soon as they sign up; it shows "waiting for approval" until you approve them, then it works as their team page.${open?"":` <b style="color:var(--bad)">Sign-ups are closed.</b>`}</div>
    <div class="hint" style="margin-top:6px">Teams: <b>${teams.size}</b> of <b>${MAX_TEAMS()}</b>${ns.length?` · ${ns.length} waiting for approval`:""}${teams.size+ns.length>=MAX_TEAMS()?` · <b style="color:var(--bad)">Full: the sign-up page now says you have all the teams you need</b>`:` · ${MAX_TEAMS()-teams.size-ns.length} place${MAX_TEAMS()-teams.size-ns.length===1?"":"s"} left`}</div>
    <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field" style="flex:0 1 120px"><label for="su-max">Team limit</label><input id="su-max" type="number" min="1" max="200" value="${MAX_TEAMS()}"></div><button class="btn ghost" data-sumax ${dis}>Save limit</button></div>
@@ -679,8 +690,8 @@ const newTeamToken=()=>(crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,""
 function teamLinkCell(t,dis){ if(!t.teamToken) return `<div class="tbtns"><button class="btn tsm" data-mklink="${esc(t.id)}" ${dis}>Create Link</button><button class="btn tsm ${t.paused?"":"ghost"}" data-pause="${esc(t.id)}" ${dis} ${t.paused?'style="background:var(--bad);border-color:var(--bad);color:#fff" title="Tap to resume jobs"':""}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" disabled title="No link yet">Reset Link</button><button class="btn tsm" data-tmail="${esc(t.id)}" ${dis} title="${t.email?"Creates the link and emails it to "+esc(t.email):"No email address for this team"}">Email Link</button></div>`;
   return `<div class="tbtns"><button class="btn tsm" data-cplink="${esc(t.id)}">Copy Link</button><button class="btn tsm ${t.paused?"":"ghost"}" data-pause="${esc(t.id)}" ${dis} ${t.paused?'style="background:var(--bad);border-color:var(--bad);color:#fff" title="Tap to resume jobs"':""}>${t.paused?"Resume Jobs":"Pause Jobs"}</button><button class="btn ghost tsm" data-mklink="${esc(t.id)}" data-renew="1" ${dis}>Reset Link</button><button class="btn tsm ${t.linkEmailedAt?"ghost":""}" data-tmail="${esc(t.id)}" ${dis} title="${t.linkEmailedAt?"Emailed "+esc(tm(t.linkEmailedAt)):(t.email?"Email the link to "+esc(t.email):"No email address for this team")}">${t.linkEmailedAt?"Email Again":"Email Link"}</button></div>` }
 function teamLinkEmail(t){ const link=teamLink(t), off=officeNo();
-  const lines=[`Hello ${t.contact||t.name},`,"",`Thank you for helping with Primrose Hospice TreeCycle ${EV_YEAR}. Here is your team's link for the collection weekend (${evRange(true)}):`,"",link,"",
-    "Open it on your phone and keep it handy: it works all weekend. Tap Let's go get some trees! and you'll get one collection at a time, planned as a full load for your vehicle. Mark each one Collected or Not collected and the next appears.",
+  const lines=[`Hello ${t.contact||t.name},`,"",`Thank you for helping with Primrose Hospice TreeCycle ${EV_YEAR}. Here is your team's link for the collection days (${evRange(true)}):`,"",link,"",
+    "Open it on your phone and keep it handy: it works on every collection day. Tap Let's go get some trees! and you'll get one collection at a time, planned as a full load for your vehicle. Mark each one Collected or Not collected and the next appears.",
     "When the vehicle's full, tap Van full and the app shows you where to unload.","If two of you have phones, both can open the link: one is the driver (in charge), the other is crew.",
     ...(off?["",`Any problems, call the office on ${off}.`]:[]),"","Thank you for supporting Primrose Hospice.","",`Primrose Hospice TreeCycle ${EV_YEAR}`];
   return {subject:`Primrose Hospice TreeCycle ${EV_YEAR} - ${t.name} - your team link`,text:lines.join("\n"),
@@ -768,17 +779,23 @@ function editDrop(p){ return new Promise(async res=>{ try{ await loadPC() }catch
     else next=(settings.dropPoints||[]).map(x=>x.id===p.id?{...x,...upd}:x);
     b.disabled=true; const ok=await patch("settings/main",{dropPoints:next}); b.disabled=false; if(ok) close(true) });
   document.body.appendChild(d); d.querySelector("#dp-name").focus() }) }
+function evCal(dis){ const y=+(view.evYear||EV_YEAR), first=new Date(Date.UTC(y,0,1)).getUTCDay(), pad=(first+6)%7;
+  const cells=Array.from({length:pad},()=>'<span></span>').concat(Array.from({length:31},(_,i)=>{ const d=`${y}-01-${String(i+1).padStart(2,"0")}`;
+    return `<label class="evd${EVENT_DAYS[d]?" on":""}"><input type="checkbox" data-evday="${d}" ${EVENT_DAYS[d]?"checked":""} ${dis}><b>${i+1}</b></label>` }));
+  return `<div class="row" style="align-items:center;gap:8px;margin-bottom:6px"><b>January</b><select id="ev-year" aria-label="Year" style="width:auto" onchange="view.evYear=this.value;render()" ${dis}>${[y-1,y,y+1,y+2].map(v=>`<option ${v===y?"selected":""}>${v}</option>`).join("")}</select></div>
+   <div class="evcal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(w=>`<span class="evh">${w}</span>`).join("")}${cells.join("")}</div>` }
 function renderSettings(main){
   const dis=canWrite?"":"disabled", sub=["run","plan"].includes(view.ssub)?view.ssub:"set";
   const bar=`<div class="subtabs" role="tablist"><button data-ssub="set" aria-pressed="${sub==="set"}">Settings</button><button data-ssub="run" aria-pressed="${sub==="run"}">Send an office run</button><button data-ssub="plan" aria-pressed="${sub==="plan"}">Planning figures</button></div>`;
   if(sub==="plan"){ renderPlan(main,bar); return }
   if(sub==="run"){ renderDispatch(main); main.insertAdjacentHTML("afterbegin",bar+`<div class="hint" style="margin-bottom:8px">Most teams use their team link. Build a run here for a team with no smartphone or poor signal, Sunday mop-up, an authorised out-of-area pickup or a big vehicle on a dense estate.</div>`); return }
   loadOfficeUsers();
-  main.innerHTML=bar+`<div class="card"><h2>Collection weekend &amp; mode</h2>
-   <div class="row"><div class="field" style="flex:1 1 200px"><label for="ev-start">Friday of the collection weekend</label><input id="ev-start" type="date" value="${esc(EV_START)}"></div><button class="btn" data-saveev ${dis}>Save</button></div>
-   <div class="hint">Now: <b>${esc(evRange(true))} ${EV_YEAR}</b>. Saturday and Sunday follow on. Team times, emails, the sign-up page and the team page all use these dates.</div>
-   <div class="row" style="margin-top:10px;align-items:center"><span>Mode: ${isLive()?'<span class="chip done">Live</span>':'<span class="chip bad">Demo</span>'}</span>${isLive()?`<button class="btn ghost" data-setmode="demo" ${dis}>Switch to Demo</button>`:`<button class="btn" data-setmode="live" ${dis}>Go Live</button>`}</div>
-   <div class="hint"><b>Demo:</b> practice data, teams can start runs at any time, customer emails come to you. <b>Live:</b> customer emails go to customers, and teams can only start a run on a collection day, from 15 minutes before their agreed time to the end of it, unless you approve an early start (Needs attention). A run that's already going can always be finished.</div></div>
+  main.innerHTML=bar+`<div class="card"><h2>Collection days &amp; mode</h2>
+   <div class="hint" style="margin-bottom:6px">Tick up to 7 days in January, e.g. Thursday to Tuesday plus a Thursday mop-up. Teams give their times for each ticked day; emails, the sign-up page and the team page all use these dates.</div>
+   ${evCal(dis)}
+   <div class="row" style="margin-top:8px;align-items:center"><button class="btn" data-saveev ${dis}>Save days</button><span class="hint">Now: <b>${esc(evRange(true))} ${EV_YEAR}</b></span></div>
+   <div class="row" style="margin-top:10px;align-items:center"><span>Mode: ${isLive()?'<span class="chip done">Live</span>':'<span class="chip bad">Demo</span>'}</span>${isLive()?`<button class="btn ghost" data-setmode="demo" ${dis}>Switch to Demo</button>`:`<button class="btn" data-setmode="live" ${dis}>Go Live</button>`}<label style="display:flex;gap:6px;align-items:center;font-weight:600${isLive()?";opacity:.5":""}" title="${isLive()?"Live always enforces team hours":"Untick to test the hours rule, early-start requests and approvals in Demo"}"><input type="checkbox" data-demoany ${isLive()?"checked disabled":(settings.demoAnyTime===false?"":"checked")} ${isLive()?"":dis}> Allow out-of-hours starts</label></div>
+   <div class="hint"><b>Demo:</b> practice data, customer emails come to you, and teams can start runs at any time (untick <b>Allow out-of-hours starts</b> to test the hours rule and early-start approvals). <b>Live:</b> customer emails go to customers, and teams can only start a run on a collection day, from 15 minutes before their agreed time to the end of it, unless you approve an early start (Needs attention). A run that's already going can always be finished.</div></div>
   <div class="card" style="margin-top:10px"><h2>Office mobile</h2>
    <div class="row"><div class="field" style="flex:1 1 200px"><label for="office-phone">Shown to drivers on their phone and in emails</label><input id="office-phone" type="text" inputmode="tel" placeholder="e.g. 07700 900000" value="${esc(officeNo())}"></div><button class="btn" data-saveoffice ${dis}>Save</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Collection area</h2>
@@ -792,7 +809,7 @@ function renderSettings(main){
    ${officeUsers===null?'<div class="hint" style="margin-top:8px">Loading…</div>':`<div class="list" style="margin-top:8px">${officeUsers.users.map(u=>`<div class="row" style="align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0"><span><b>${esc(u)}</b>${u===officeUsers.owner?' <span class="chip done">Owner</span>':""}${u===(me||"").toLowerCase()?' <span class="chip grey">You</span>':""}</span>${u===officeUsers.owner||u===(me||"").toLowerCase()?"":`<button class="btn ghost" data-rmuser="${esc(u)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div>`).join("")}</div>`}
    <div class="row" style="margin-top:8px"><div class="field" style="flex:1 1 220px"><label for="new-user">Add an office user</label><input id="new-user" type="email" placeholder="name@example.com" autocomplete="off"></div><button class="btn" data-adduser ${dis}>Add</button></div></div>
   <div class="card" style="margin-top:10px"><h2>Drop-off points</h2><div class="hint">When a team taps Van full or Returning to unload, they're sent to the nearest switched-on point. They can change it on their phone if it's shut or full. The main drop-off is used when a team's position isn't known.</div>
-   ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"||p.id===mainDropId()?'<span class="chip done">Main drop-off</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this weekend</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"||p.id===mainDropId()?"":`<button class="btn ghost" data-maindrop="${esc(p.id)}" ${dis}>Make main</button><button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
+   ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"||p.id===mainDropId()?'<span class="chip done">Main drop-off</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this collection</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"||p.id===mainDropId()?"":`<button class="btn ghost" data-maindrop="${esc(p.id)}" ${dis}>Make main</button><button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
    <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>`;
 }
 let officeUsers=null, ouAt=0;
@@ -861,7 +878,7 @@ function renderPlan(main,bar){
 }
 const HELP=[
  ["Before the weekend",[
-  ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>Copy Link</b> on each team row and send it to the contact by text or email. The link works all weekend. Teams tap <b>Let's go get some trees!</b> and get one collection at a time."],
+  ["Send each team its link","Teams tab, <b>Create links</b> (once), then <b>Copy Link</b> on each team row and send it to the contact by text or email. The link works on every collection day. Teams tap <b>Let's go get some trees!</b> and get one collection at a time."],
   ["Set the office mobile","Settings tab, <b>Office mobile</b>, Save. Drivers see it on their <b>Call office</b> button and in emails."],
   ["Add or change a drop-off point","Settings tab, <b>Drop-off points</b>. <b>Add a drop-off point</b> needs a name, address and postcode. The main drop-off (Primrose HQ) is used when a team's position isn't known; tap <b>Make main</b> on another point to change it. <b>Switch off</b> a point that's shut or full."],
   ["Add a team","Teams tab, <b>Add a team</b>. Name, start trees per load, contact, phone and vehicle are needed. The app plans each load for that many trees, then learns the real figure from the team's full loads. Add up to two more team members and their phones if you want. Tick <b>Can take large trees</b> for a van, trailer or Luton."],
@@ -901,7 +918,7 @@ function renderTeams(main){
    <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("t",null)}</div>
    <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="t-large"> Can take large trees</label>
    <div><button class="btn" data-addteam ${dis}>Add team</button></div></div>
-  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for the whole weekend. They tap <b>Let's go get some trees!</b> and get one collection at a time until the van is full. Tap <b>Copy Link</b> and send it to the team contact by text or email. <b>Pause Jobs</b> stops a team getting new jobs; <b>Reset Link</b> makes a new link and stops the old one working.</div>
+  <div class="card" style="margin-top:10px"><h2>Team links</h2><div class="hint">Each team gets one link for all the collection days. They tap <b>Let's go get some trees!</b> and get one collection at a time until the van is full. Tap <b>Copy Link</b> and send it to the team contact by text or email. <b>Pause Jobs</b> stops a team getting new jobs; <b>Reset Link</b> makes a new link and stops the old one working.</div>
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Trees per load</th><th>Agreed times</th><th>Done</th><th>Team link</th></tr></thead><tbody>
@@ -972,7 +989,7 @@ async function ensurePhotoKey(s,kind){ if(s.photoKey||(kind==="final"&&!hasPhoto
   if(!await patch("stops/"+sid(s.ref),{photoKey:k})) return false; s.photoKey=k; return true }
 function emailBodies(s,kind){
   const first=String(s.name||"").split(" ")[0]||"there";
-  const url=s.photoKey?esc(photoLink(s.photoKey)):"", lnk=url?`<br><a href="${url}">${url}</a>`:"", sunL=evFmt(EVENT_DAYS.sun,{weekday:"long",day:"numeric",month:"long"}), by=`by 12pm on ${sunL}`;
+  const url=s.photoKey?esc(photoLink(s.photoKey)):"", lnk=url?`<br><a href="${url}">${url}</a>`:"", sunL=evFmt(lastDay(),{weekday:"long",day:"numeric",month:"long"}), by=`by 12pm on ${sunL}`;
   const pic=url&&hasPhoto(s)?`<p>Our volunteers took a photo when they called, which you can see on the page below.</p>`:"";
   const ref=`PHTC-${s.ref}`;
   if(kind==="outarea") return {
@@ -1012,6 +1029,10 @@ document.addEventListener("change",e=>{
   if(e.target.id==="t-vehicle"){ const l=$("#t-large"); if(l) l.checked=/transit|trailer|luton/i.test(e.target.value) }
   if(e.target.id==="team-sel"){ preview=null; const t=teams.get(e.target.value); render(); const c=$("#cap"); if(c&&t) c.value=t.capacity; }
 });
+document.addEventListener("change",async e=>{ const dm=e.target.closest&&e.target.closest("input[data-demoany]");
+  if(dm){ if(isLive()) return; const on=dm.checked; if(await patch("settings/main",{demoAnyTime:on})) toast(on?"Demo: teams can start any time":"Demo: team hours now enforced, so you can test early-start requests"); else dm.checked=!on; return }
+  const c=e.target.closest&&e.target.closest("input[data-evday]"); if(!c) return;
+  if(c.checked&&document.querySelectorAll("input[data-evday]:checked").length>7){ c.checked=false; toast("Up to 7 days") } });
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button"); if(!b) return; const d=b.dataset;
   if(d.photoview){ viewPhoto(+d.photoview,d.pk,+(d.pn||0)); return }
@@ -1112,8 +1133,11 @@ async function act(b,d){
   if("alllinks" in d){ const list=[...teams.values()].filter(t=>!t.teamToken); for(const t of list) await patch("teams/"+t.id,{teamToken:newTeamToken(),teamTokenAt:new Date().toISOString()}); toast(`${list.length} team link${list.length===1?"":"s"} created`); return }
   if("cpsignup" in d){ const ok=await copyText(SIGNUP_URL()); if(ok) toast("Sign-up link copied"); else if(ok===false) toast("Couldn't copy"); return }
   if("sumax" in d){ const v=parseInt($("#su-max").value,10); if(!(v>=1&&v<=200)){toast("Enter a team limit from 1 to 200");return} if(await patch("settings/main",{maxTeams:v})) toast(`Team limit set to ${v}`); return }
-  if("saveev" in d){ const v=$("#ev-start").value; if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){toast("Pick a date");return} if(new Date(v+"T12:00:00Z").getUTCDay()!==5){toast("Pick the Friday of the collection weekend");return}
-    if(await patch("settings/main",{eventStart:v})) toast(`Collection weekend set: ${evFmt(v,{weekday:"short",day:"numeric",month:"short"})} – ${evFmt(addDays(v,2),{weekday:"short",day:"numeric",month:"short",year:"numeric"})}`); return }
+  if("saveev" in d){ const v=[...document.querySelectorAll("input[data-evday]:checked")].map(i=>i.dataset.evday).sort();
+    if(!v.length){toast("Tick at least one day");return} if(v.length>7){toast("Pick up to 7 days");return}
+    const lost=[...teams.values()].filter(t=>(t.slots||[]).some(s=>EVENT_DAYS[normDay(s.day)]&&!v.includes(normDay(s.day))));
+    if(lost.length&&!await confirmBox("Remove days teams have times on?",`${lost.length} team${lost.length===1?" has":"s have"} agreed times on a day you've unticked (${lost.slice(0,4).map(t=>t.name).join(", ")}${lost.length>4?"…":""}). Those times will stop counting.`,"Save days")) return;
+    if(await patch("settings/main",{eventDays:v})){ view.evYear=null; toast(`Collection days saved: ${v.length} day${v.length===1?"":"s"}`) } return }
   if(d.setmode){ const live=d.setmode==="live";
     if(live){ const w=await typeBox("Go Live?","Customer emails will go to real customers, and teams can only start runs in their agreed times. Only do this once the real address list is loaded. Type LIVE to confirm.","LIVE","Go Live"); if(!w) return }
     else if(!await confirmBox("Switch to Demo?","Hours limits stop and customer emails come to you instead of the customer.","Switch to Demo")) return;
@@ -1175,7 +1199,7 @@ render();
     if(k){const el=document.getElementById(k.id); if(el) el.focus()}};
   db.collection("stops").limit(20000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.ref,attachHelpers({...x}))} stops=mp; got.stops=true; ISO=null; redrawSoon()},()=>{ if(Date.now()-(window.__lostAt||0)>60000){ window.__lostAt=Date.now(); toast("Connection lost: retrying…") } });
   db.collection("runs").limit(5000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} runs=mp; redrawSoon()},()=>{});
-  db.doc("settings/main").onSnapshot(snap=>{settings=snap.exists?{...snap.data()}:{}; setEvent(settings.eventStart); $("#demob").hidden=isLive(); AREA={core:+settings.areaCore||8,link:+settings.areaLink||3,max:+settings.areaMax||20}; ISO=null; redrawSoon()},()=>{});
+  db.doc("settings/main").onSnapshot(snap=>{settings=snap.exists?{...snap.data()}:{}; setEvent(settings.eventDays,settings.eventStart); $("#demob").hidden=isLive(); AREA={core:+settings.areaCore||8,link:+settings.areaLink||3,max:+settings.areaMax||20}; ISO=null; redrawSoon()},()=>{});
   db.collection("signups").limit(1000).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x&&x.id)mp.set(x.id,x)} signups=mp; redrawSoon()},()=>{});
   db.collection("teams").limit(500).onSnapshot(snap=>{const mp=new Map();for(const doc of snap.docs){const x=doc.data();if(x)mp.set(x.id,x)} teams=mp; redrawSoon()},()=>{});
 })();
