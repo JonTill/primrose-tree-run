@@ -55,7 +55,7 @@ h1,h2,h3,h4,button,.btn{text-transform:capitalize}
     <h2 style="margin-top:6px">Your vehicle</h2>
     <div class="two"><label class="f">Vehicle *<select id="vehicle"><option value="">Choose…</option><option>4x4 &amp; trailer</option><option>Pickup truck</option><option>Small van</option><option>Transit van</option><option>Large van / Luton</option><option>Primrose provided vehicle</option><option>Other</option></select></label>
     <label class="f">About how many trees per load? *<input type="number" id="capacity" min="8" max="25" inputmode="numeric" placeholder="8 to 25"></label></div>
-    <label class="chk"><input type="checkbox" id="large"> We can take large trees (over 8ft)</label>
+    <label class="chk" id="largebox" style="display:none"><input type="checkbox" id="large"> We can take large trees (over 8ft)</label>
     <h2 style="margin-top:6px">When you can help *</h2>
     <p class="muted" style="margin-top:0">Tick each day you can come and set your times. They can be different each day.</p>
     <div id="days"></div>
@@ -89,7 +89,7 @@ h1,h2,h3,h4,button,.btn{text-transform:capitalize}
   const shut=html=>{ $("main").innerHTML=`<div class="card"><h2>Thank you for your interest</h2><p style="margin-bottom:0">${html}</p></div>` };
   const FULL="We now have all the volunteer teams we need for this year's collection, so sign-ups are closed. Thank you for offering to help Primrose Hospice.";
   const CLOSED="Sign-ups have closed. Thank you for offering to help Primrose Hospice.";
-  if(sb) sb.rpc("event_info").then(({data:e})=>{ const L=(e&&Array.isArray(e.days)?e.days:[]).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)); if(L.length&&L.join()!==DAYS.map(x=>x[0]).join()) setDays(L) }).catch(()=>{});
+  if(sb) sb.rpc("event_info").then(({data:e})=>{ if(e&&e.largeOn) $("largebox").style.display=""; const L=(e&&Array.isArray(e.days)?e.days:[]).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)); if(L.length&&L.join()!==DAYS.map(x=>x[0]).join()) setDays(L) }).catch(()=>{});
   if(sb) sb.rpc("signup_state").then(({data:s})=>{ if(s&&s.open===false) shut(CLOSED); else if(s&&s.full) shut(FULL) }).catch(()=>{});
   const emOK=v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
   const MSG={closed:"Sign-ups have closed. Please contact the Primrose Hospice fundraising team.",full:"Sorry, we now have all the teams we need this year, so we can't take your sign-up. Thank you for offering to help.",name:"Please enter a team name and your name.",phone:"Please enter a mobile number we can call on the day.",email:"Please check your email address.",vehicle:"Please choose your vehicle.",capacity:"Please say about how many trees fit in one load (8 to 25).",times:"Please tick at least one day, with a finish time after the start time.",consent:"Please tick the box to say we can keep your details.",busy:"Lots of people are signing up right now. Please try again in a few minutes.",already:"We've just had a sign-up from this email address. If you need to change anything, reply to the email we send you."};
