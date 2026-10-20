@@ -695,7 +695,7 @@ function teamLinkCell(t,dis){ const pause=`<button class="btn tsm ghost" data-pa
 function teamLinkEmail(t){ const link=teamLink(t), off=officeNo();
   const lines=[`Hello ${t.contact||t.name},`,"",`Thank you for helping with Primrose Hospice TreeCycle ${EV_YEAR}. Here is your team's link for the collection days (${evRange(true)}):`,"",link,"",
     "Open it on your phone and keep it handy: it works on every collection day. Tap Let's go get some trees! and you'll get one collection at a time until your vehicle is full. Mark each one Collected or Not collected and the next appears.",
-    "When the vehicle's full, tap Van full and the app shows you where to unload.","If two of you have phones, both can open the link: one is the driver (in charge), the other is crew.",
+    "When the vehicle's full, tap Van full and the app shows you where to unload.","If two of you have phones, both can open the link and use it the same way: whatever one phone marks shows on the other.",
     ...(off?["",`Any problems, call the office on ${off}.`]:[]),"","Thank you for supporting Primrose Hospice.","",`Primrose Hospice TreeCycle ${EV_YEAR}`];
   return {subject:`Primrose Hospice TreeCycle ${EV_YEAR} - ${t.name} - your team link`,text:lines.join("\n"),
     body:lines.map(l=>l===link?`<p><a href="${esc(link)}"><b>Open your team page</b></a><br>${esc(link)}</p>`:l?`<p>${esc(l)}</p>`:"").join("")} }
