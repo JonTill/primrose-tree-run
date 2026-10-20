@@ -213,7 +213,7 @@ function getPos(timeout){return new Promise(res=>{ if(!navigator.geolocation) re
 let PC=null; async function pcLookup(p){ if(!PC) PC=await fetch("postcodes.json").then(r=>r.json()); const k=String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); if(PC.pc[k]) return {lat:PC.pc[k][0],lon:PC.pc[k][1]}; const s=PC.sector[k.slice(0,-2)]; return s?{lat:s[0],lon:s[1]}:null }
 function netLine(ok){ const e=$("#net"); if(!e) return; if(ok){ lastOk=Date.now(); e.hidden=true; return }
   e.hidden=false; e.textContent="No signal"+(lastOk?" · last updated "+new Date(lastOk).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"")+". It will catch up when you have signal." }
-const EV={start:"2027-01-08",mode:"demo",days:["2027-01-08","2027-01-09","2027-01-10"]};
+const EV={large:false,start:"2027-01-08",mode:"demo",days:["2027-01-08","2027-01-09","2027-01-10"]};
 const addD=(iso,n)=>{const d=new Date(iso+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10)};
 const fmtD=(iso,o)=>new Date(iso+"T12:00:00Z").toLocaleDateString("en-GB",{timeZone:"UTC",...o});
 const evYear=()=>(EV.days[EV.days.length-1]||EV.start).slice(0,4);
@@ -224,7 +224,7 @@ function evRange(){ const L=EV.days, grp=[]; let i=0; while(i<L.length){ let j=i
 const DAYN={fri:0,sat:1,sun:2};
 const slotDate=x=>x.date||(/^\d{4}-/.test(x.day||"")?x.day:addD(EV.start,DAYN[x.day]??0));
 const slotTxt=x=>x?`${fmtD(slotDate(x),{weekday:"long",day:"numeric",month:"short"})}, ${x.from}–${x.to}`:"";
-const setEV=h=>{ if(!h) return; if(h.eventStart) EV.start=h.eventStart; if(h.mode) EV.mode=h.mode; if(Array.isArray(h.days)&&h.days.length) EV.days=h.days };
+const setEV=h=>{ if(!h) return; if(h.eventStart) EV.start=h.eventStart; if(h.mode) EV.mode=h.mode; if(Array.isArray(h.days)&&h.days.length) EV.days=h.days; if("largeOn" in h) EV.large=!!h.largeOn };
 function earlyFrom(x){ const [h,m]=x.from.split(":").map(Number), t=h*60+m-15; return String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0") }
 // start button, or the out-of-hours card (Live mode only)
 function startGate(label){ const h=data.hours;
@@ -273,14 +273,14 @@ function render(){
     $("#sub").textContent="What we've done";
     m.innerHTML=`${statBlock()}<div class="sub">So far: <b>${p.allTrees||0} trees</b> on ${p.allRuns||0} runs. Everyone together: <b>${p.eventTrees||0} trees</b> collected for Primrose Hospice.</div><button class="btn ghost" data-v="home">Back</button>`; return }
   if(ph==="live"){ const j=data.jobs||[], cur=j[0], nxt=j[1], pz=t.paused?'<div class="crewnote">The office has paused new jobs for your team. Finish what you have and call them.</div>':"";
-    $("#sub").innerHTML=`Run ${r.n} · ${totLine(r.collectedTrees||0)}${t.large?' · <span class="chip big">Large trees OK</span>':""}`;
+    $("#sub").innerHTML=`Run ${r.n} · ${totLine(r.collectedTrees||0)}${t.large&&EV.large?' · <span class="chip big">Large trees OK</span>':""}`;
     const tg=+r.target||0, ld=tg?`<div class="loadln">On board: <b>${r.collectedTrees||0}</b> · Your Team's Vehicle Average is <b>${tg}</b> - Keep Going Until It's Full!</div>`:"";
     const back=crew()?"":`<button class="full" data-full>Van full · head back to unload</button><button class="nf" data-notfull>Head back, not full</button>`;
     if(!cur){ m.innerHTML=pz+(r.loadDone?`<div class="endp"><h2>Nothing else close by</h2><div class="sub">${r.collectedTrees||0} tree${r.collectedTrees===1?"":"s"} on board. If there's still room, look a bit further afield; otherwise head back to unload.</div>${crew()?`<div class="crewnote">The driver's phone decides what's next.</div>`:`<button class="full" data-full>Van full · head back to unload</button><button class="btn ghost" data-more>Still room · look further afield</button><button class="nf" data-notfull>Head back, not full</button>`}</div>${roleBar()}<div class="bar">${call}</div>`
       :`<div class="empty">No more collections near you right now.</div><button class="btn ghost" data-again>Check again</button>${back}${roleBar()}<div class="bar">${call}</div>`); return }
     const nav=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(short(cur.address)+", "+cur.postcode)}`;
     const tel=x=>x.phone?` · <a class="tel" href="tel:${esc(String(x.phone).replace(/\s/g,""))}">${esc(x.phone)}</a>`:"";
-    m.innerHTML=pz+`<div class="job"><div class="clbl">Collection${cur.rebooked?' <span class="chip">2nd visit</span>':""}${cur.large?' <span class="chip big">Large tree</span>':""}</div>
+    m.innerHTML=pz+`<div class="job"><div class="clbl">Collection${cur.rebooked?' <span class="chip">2nd visit</span>':""}${cur.large&&EV.large?' <span class="chip big">Large tree</span>':""}</div>
       <div class="q1">${cur.trees} tree${cur.trees>1?"s":""} · ${esc(cur.name)}${tel(cur)}</div>
       <div class="ad1">${esc(short(cur.address))}, ${esc(cur.postcode)}</div>
       <div class="in1">Info: ${esc(cur.where)}</div>
@@ -310,7 +310,7 @@ function render(){
       <div class="sm">Every tree you collected helps pay for care at Primrose Hospice. We couldn't do it without you. Have a well-earned rest!</div></div>
       <button class="btn ghost" data-v="gohome">Home page</button>`; return }
   // home
-  $("#sub").textContent=t.large?"Your team can take large trees":"Primrose Hospice TreeCycle "+evYear();
+  $("#sub").textContent=t.large&&EV.large?"Your team can take large trees":"Primrose Hospice TreeCycle "+evYear();
   m.innerHTML=`<div class="home">${data.hours&&data.hours.mode==="demo"?`<div class="crewnote"><b>Practice mode.</b> ${data.hours.why==="demo"?"Runs can start at any time.":"Team hours are being tested."}</div>`:""}${progBlock()}${crew()?`<div class="crewnote">Crew phone: this page follows the driver's phone. When the driver starts a run, your collections appear here.</div>`:data.selfService?startGate("Let's go get some trees!"):`<div class="empty">The office will send your runs. Keep this page for your summary.</div>`}
     <button class="btn ghost" data-v="summary">What we've done</button>${crew()?"":`<button class="btn blue" data-logoff>We're done for the day</button>`}${statBlock()}<div class="sub">You'll get one collection at a time until your vehicle is full (it usually takes about ${t.target||10} trees). Mark each one and the next appears. When the vehicle's full, tap <b>Van full</b>; if you have to come back early, tap <b>Head back, not full</b>.</div>${roleBar()}<div class="bar">${call}</div></div>`;
 }
