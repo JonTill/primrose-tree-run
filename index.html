@@ -197,6 +197,7 @@ function setEvent(days,start){ EV_START=isoD(start)?start:"2027-01-08";
   set("evsub",`${evRange()} · Registered Charity No. 700272`); set("evh1",`Primrose Hospice TreeCycle ${EV_YEAR}`); document.title=`Primrose Hospice TreeCycle ${EV_YEAR}` }
 setEvent();
 const isLive=()=>settings&&settings.mode==="live";
+const LG=()=>!!(settings&&settings.largeOn===true);   // large-tree matching switched on
 const planPct=()=>{ const v=parseInt(settings&&settings.planPct,10); return v>=50&&v<=120?v:80 };
 const startReqs=()=>[...teams.values()].filter(t=>t.startRequest&&t.startRequest.status==="pending");
 const MAX_STOPS=30; // sanity cap per run
@@ -295,12 +296,12 @@ function teamOptions(sel){
 
 /* ---------- run building ---------- */
 function buildRun(capacity,team){
-  const big=!!(team&&team.large);
+  const big=!!(team&&team.large)||!LG();
   const pool=[...stops.values()].filter(s=>s.status===""&&!outArea(s)&&!reserved(s)&&(!s.large||big));   // large trees only go to teams set up for them
   if(!pool.length) return [];
   const pri=pool.filter(s=>s.rebooked);
   const seedFrom=pri.length?pri:pool;
-  const seedScore=s=>km(s,DEPOT)+(capacity>=BIG?0.75*(s.trees-1):-0.5*(s.trees-1))+(big&&s.large?3:0);
+  const seedScore=s=>km(s,DEPOT)+(capacity>=BIG?0.75*(s.trees-1):-0.5*(s.trees-1))+(LG()&&big&&s.large?3:0);
   let seed=seedFrom.reduce((a,b)=>seedScore(b)>seedScore(a)?b:a);
   if(seed.trees>capacity){ const fits=seedFrom.filter(s=>s.trees<=capacity); if(!fits.length) return []; seed=fits.reduce((a,b)=>km(b,DEPOT)>km(a,DEPOT)?b:a); }
   const chosen=[seed]; let load=seed.trees; const left=new Set(pool); left.delete(seed);
@@ -313,7 +314,7 @@ function buildRun(capacity,team){
       if(dist>6) continue;                                   // never more than ~6 km off the run
       const multi=s.trees-1;
       const pull=capacity>=BIG?0.3*multi:-0.2*multi;          // big vehicles: up to 0.6 km detour for a 3-tree stop; small ones leave multis for big ones
-      const sc=dist-pull-(s.rebooked?0.5:0)-(big&&s.large?0.8:0);
+      const sc=dist-pull-(s.rebooked?0.5:0)-(LG()&&big&&s.large?0.8:0);
       if(sc<bd){bd=sc;best=s}
     }
     if(!best) break;
@@ -405,19 +406,19 @@ function renderDispatch(main){
   if(preview){
     const list=preview.refs.map(r=>stops.get(r)).filter(Boolean), trees=list.reduce((a,s)=>a+s.trees,0);
     pv=list.length?`<div class="card"><div class="row" style="justify-content:space-between"><h2>Run ${nextRunNo()} · ${esc(areaOf(list))}</h2><span class="chip">${list.length} stops · ${trees}/${preview.capacity} trees</span></div>
-      <ol class="list" style="padding-left:18px;margin:0">${list.map(s=>`<li>${esc(s.name)}, ${esc(short(s.address))} · ${s.trees} ${s.trees>1?"trees":"tree"}${s.rebooked?' <span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}</li>`).join("")}</ol>
+      <ol class="list" style="padding-left:18px;margin:0">${list.map(s=>`<li>${esc(s.name)}, ${esc(short(s.address))} · ${s.trees} ${s.trees>1?"trees":"tree"}${s.rebooked?' <span class="chip warn">2nd visit</span>':""}${s.large&&LG()?' <span class="chip out">Large tree</span>':""}</li>`).join("")}</ol>
       <div class="row"><button class="btn bad" data-send ${canWrite?"":"disabled"}>Send run &amp; copy driver link</button><button class="btn ghost" data-rebuild>Rebuild</button><button class="btn ghost" data-cancelpv>Cancel</button></div>
       <div class="hint">Sending marks these stops as on the road, emails the driver link to the team and copies the link so you can paste it into a text.</div></div>`
       :`<div class="empty">Nothing left that fits ${preview.capacity} trees.</div>`;
   }
-  const bigWait=[...stops.values()].filter(s=>s.status===""&&s.large&&!outArea(s)).reduce((a,s)=>a+s.trees,0);
+  const bigWait=!LG()?0:[...stops.values()].filter(s=>s.status===""&&s.large&&!outArea(s)).reduce((a,s)=>a+s.trees,0);
   main.innerHTML=`<div class="card">
     <h2>Send the next run</h2>${bigWait?`<div class="hint" style="margin-bottom:8px"><span class="chip out">Large trees</span> ${bigWait} waiting. Only teams that can take large trees will be given them.</div>`:""}
     <div class="row">
       <div class="field" style="flex:2 1 220px"><label for="team-sel">Volunteer team</label><select id="team-sel" class="${team&&!nowSlot(team)?"outside":""}">${teamOptions(sel)}</select></div>
       <div class="field" style="flex:0 1 110px"><label for="cap">Trees this run</label><input id="cap" type="number" min="1" max="60" value="${esc(cap)}"></div>
     </div>
-    ${team?`<div class="hint">${esc(team.contact||"")}${team.phone?" · "+esc(team.phone):""}${team.vehicle?" · "+esc(team.vehicle):""}${team.large?" · Takes large trees":""}<br>Agreed times: ${esc(slotText(team))}${!nowSlot(team)?' · <b style="color:var(--bad)">Outside agreed times</b>':""}${team.notes?`<br>Note: ${esc(team.notes)}`:""}</div>`:`<div class="hint">${teams.size?"Teams available now are listed first. Teams outside their agreed times are listed below them.":"No teams yet. Add them on the Teams tab, or ask Claude to load the volunteer list."}</div>`}
+    ${team?`<div class="hint">${esc(team.contact||"")}${team.phone?" · "+esc(team.phone):""}${team.vehicle?" · "+esc(team.vehicle):""}${team.large&&LG()?" · Takes large trees":""}<br>Agreed times: ${esc(slotText(team))}${!nowSlot(team)?' · <b style="color:var(--bad)">Outside agreed times</b>':""}${team.notes?`<br>Note: ${esc(team.notes)}`:""}</div>`:`<div class="hint">${teams.size?"Teams available now are listed first. Teams outside their agreed times are listed below them.":"No teams yet. Add them on the Teams tab, or ask Claude to load the volunteer list."}</div>`}
     ${officeNo()?"":`<div class="hint" style="color:var(--bad)">No office mobile set. Add it on the Settings tab so drivers know who to call.</div>`}
     <div class="row"><button class="btn" data-build ${canWrite&&team?"":"disabled"}>Build run</button>${team?"":'<span class="hint">Choose a team first.</span>'}<span class="hint">${queue.length} addresses waiting (${qTrees} trees)${rb?`, ${rb} rebooked`:""}</span></div>
   </div>
@@ -485,7 +486,7 @@ function stopCard(s,i,r){
   const one=encodeURIComponent(short(s.address)+", "+s.postcode);
   return `<div class="stop" data-s="${esc(s.status)}">
    <div class="st-top"><div class="st-n">${i}</div>
-    <div class="st-body"><div class="st-name">${esc(s.name)} ${s.rebooked?'<span class="chip warn">2nd visit</span>':""}${s.large?' <span class="chip out">Large tree</span>':""}${s.bookedTrees&&s.bookedTrees!=s.trees?` <span class="chip done">${s.trees} trees · booked ${s.bookedTrees}</span>`:""}</div>
+    <div class="st-body"><div class="st-name">${esc(s.name)} ${s.rebooked?'<span class="chip warn">2nd visit</span>':""}${s.large&&LG()?' <span class="chip out">Large tree</span>':""}${s.bookedTrees&&s.bookedTrees!=s.trees?` <span class="chip done">${s.trees} trees · booked ${s.bookedTrees}</span>`:""}</div>
      <div class="st-addr"><a href="https://www.google.com/maps/search/?api=1&query=${one}" target="_blank" rel="noopener">${esc(short(s.address))}, ${esc(s.postcode)}</a></div>
      <div class="st-info"><span>Tree: <b>${esc(s.where)}</b></span><span>Phone: <b>${s.phone?esc(s.phone):"none given"}</b></span></div></div>
     <div class="trees">${s.trees}<small>${s.trees>1?"trees":"tree"}</small></div></div>
@@ -521,9 +522,9 @@ function renderMisses(main){
   ${(()=>{const oa=[...stops.values()].filter(outArea);return oa.length?`<h3 style="color:var(--bad)">Out of area (${oa.length})</h3><div class="hint" style="margin-bottom:8px">These addresses are isolated: more than ${AREA.core} km from Bromsgrove with no other booking within ${AREA.link} km, or more than ${AREA.max} km away. Each one costs a team about half an hour for one tree, so they're not planned. Up to ${AUTH_KM} km, the office can tap <b>Authorise collection</b> and it goes on the list. Otherwise email the customer to say so and ask them to contact the office for a refund. If it's a typo, edit the address and it goes back on the list.</div>
   <div class="row" style="margin-bottom:8px"><button class="btn bad" data-oaemailall ${canWrite&&(MAILTO||mcp)&&oa.some(s=>!s.oaEmailAt&&s.email)?"":"disabled"}>Email ${oa.filter(s=>!s.oaEmailAt&&s.email).length} out-of-area customer${oa.filter(s=>!s.oaEmailAt&&s.email).length===1?"":"s"}</button></div><div class="list">${oa.map(s=>`<div class="miss" style="border-color:var(--bad)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip bad">${s.lat==null?"Postcode not found":areaWhy(s)}</span></div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")} · ${money(s.paid)?paidTxt(s):"Amount paid not recorded (add it with Edit address)"}</div>${s.customerReply==="moved"?`<div><span class="chip bad">Customer changed the address ${tm(s.addrChangedAt)}: ${s.lat==null?"postcode not recognised":"still out of area"}. Call them, or Authorise / Remove.</span></div>`:s.oaEmailAt?`<div><span class="chip warn">Emailed ${tm(s.oaEmailAt)} · waiting for the customer to choose</span></div>`:""}<div class="steps">${s.oaEmailAt&&s.customerReply!=="moved"?"":`<button class="btn bad" data-oaemail="${s.ref}" ${canWrite&&(MAILTO||mcp)&&s.email?"":"disabled"}>Email customer</button>`}${s.lat!=null&&km(s,DEPOT)<=AUTH_KM?`<button class="btn" data-oaauth="${s.ref}" ${canWrite?"":"disabled"}>Authorise collection</button>`:`<span class="hint">Over ${AUTH_KM} km: can't be authorised</span>`}<button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-oaremove="${s.ref}" ${canWrite?"":"disabled"}>Remove from collection</button>${refundBtn(s)}</div></div>`).join("")}</div>`:""})()}
   ${(()=>{ const tb=[...stops.values()].filter(tooBig); if(!tb.length) return "";
-    const bigT=[...teams.values()].filter(t=>t.large&&!t.paused).map(t=>t.name);
-    return `<h3>Tree too big (${tb.length})</h3><div class="hint" style="margin-bottom:8px">${bigT.length?`These go back on the list for a team that takes large trees (${esc(bigT.join(", "))}). Nothing to do unless the photo shows it can't be collected.`:`<b>No team is set to take large trees</b>, so nobody will be sent. Tick <b>Large trees OK</b> for a team on the Teams tab, or close these.`}</div>
-    <div class="list">${tb.map(s=>`<div class="miss" style="border-color:var(--skip)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip ${bigT.length?"warn":"bad"}">${bigT.length?"Waiting for a large-tree team":"No large-tree team"}</span></div>
+    const bigT=!LG()?null:[...teams.values()].filter(t=>t.large&&!t.paused).map(t=>t.name);
+    return `<h3>Tree too big (${tb.length})</h3><div class="hint" style="margin-bottom:8px">${!bigT?"These go back on the list for another team. Nothing to do unless the photo shows it can't be collected.":bigT.length?`These go back on the list for a team that takes large trees (${esc(bigT.join(", "))}). Nothing to do unless the photo shows it can't be collected.`:`<b>No team is set to take large trees</b>, so nobody will be sent. Tick <b>Large trees OK</b> for a team on the Teams tab, or close these.`}</div>
+    <div class="list">${tb.map(s=>`<div class="miss" style="border-color:var(--skip)"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b><span class="chip ${!bigT||bigT.length?"warn":"bad"}">${!bigT?"Back on the list":bigT.length?"Waiting for a large-tree team":"No large-tree team"}</span></div>
      <div>${esc(short(s.address))}, ${esc(s.postcode)}</div>${s.photoAt&&s.photoKind==="toobig"?`<div class="row" style="align-items:center;gap:10px">${photoBtn(s,"toobig")}<span class="hint">Driver's ${+s.photoCount>1?s.photoCount+" photos":"photo"} ${tm(s.photoAt)}. Tap to enlarge.</span></div>`:`<div class="hint">No photo.</div>`}
      <div class="hint">${s.phone?"Tel "+esc(s.phone):"No phone"} · ${paidTxt(s)}${s.note?" · Info: "+esc(s.note):""}</div>
      <div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite?"":"disabled"}>Edit address</button><button class="btn ghost" data-tbclose="${s.ref}" ${canWrite?"":"disabled"}>Close: can't collect</button>${refundBtn(s)}</div></div>`).join("")}</div>`})()}
@@ -589,7 +590,7 @@ function renderAddresses(main){
   <div class="card"><div class="row" style="justify-content:space-between"><h2>Addresses (${all.length})</h2><button class="btn" data-addstop ${canWrite?"":"disabled"}>Add a collection</button></div>
    <div class="field"><label for="addr-q">Search name, address, postcode or phone</label><input id="addr-q" type="text" value="${esc(q)}" placeholder="e.g. Hill Lane or B60 3"></div>
    <div class="hint">${({todo:"Waiting or on the road.",iss:"Missed, or out of area: handle them on Needs attention.",done:"Collected, or closed."})[asub]} ${q?`${hits.length} match${hits.length===1?"":"es"} here${other?` · ${other} more in the other tabs`:""}`:hits.length>40?"Showing the first 40. Search to find others.":""}${q&&hits.length>40?" · showing the first 40":""}</div></div>
-  <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${s.large?' <span class="chip out">Large tree</span>':""}${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · ${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
+  <div class="list" style="margin-top:10px">${shown.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.trees} ${s.trees>1?"trees":"tree"}</b>${s.large&&LG()?' <span class="chip out">Large tree</span>':""}${statusChip(s)}</div><div>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="hint">#${s.ref} · ${s.phone?"Tel "+esc(s.phone):"No phone"} · Email: ${esc(s.email||"none")} · ${esc(s.where)}${s.added?" · added by office":""}</div><div class="steps"><button class="btn ghost" data-edit="${s.ref}" ${canWrite&&s.status!=="out"?"":"disabled"}>${s.status==="out"?"On a run · can't edit":"Edit"}</button></div></div>`).join("")||`<div class="empty">No addresses match.</div>`}</div>`;
 }
 document.addEventListener("input",e=>{ if(e.target.id==="addr-q"){ view.q=e.target.value; clearTimeout(renderAddresses.t); renderAddresses.t=setTimeout(()=>{const pos=e.target.selectionStart; render(); const el=$("#addr-q"); if(el){el.focus(); try{el.setSelectionRange(pos,pos)}catch(x){}}},250) } });
 const VEHICLES=["4x4 & trailer","Pickup truck","Small van","Transit van","Large van / Luton","Primrose provided vehicle","Other"];
@@ -612,7 +613,7 @@ function editTeam(t,su){   // su = a sign-up being reviewed: Approve adds it as 
      ${teamGrid("et",t,veh)}
      <div class="field"><label>Agreed times (tick each day they're coming and set the times)</label>${slotRows("et",t)}</div>
      <div class="field"><label for="et-notes">Notes</label><input id="et-notes" type="text" maxlength="300" value="${esc(t.notes||"")}"></div>
-     <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-large" ${t.large?"checked":""}> Can take large trees</label>
+     <label style="display:${LG()?"flex":"none"};gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="et-large" ${t.large?"checked":""}> Can take large trees</label>
      <div class="row" style="justify-content:flex-end">${su?`<button class="btn ghost" data-m="decl" style="color:var(--bad);border-color:var(--bad);margin-right:auto">Decline</button><button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Approve &amp; add team</button></div>`:t.__new?`<button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Add team</button></div>`:`${[...runs.values()].some(r=>r.teamId===t.id)?"":`<button class="btn ghost" data-m="del" style="color:var(--bad);border-color:var(--bad);margin-right:auto">Remove team</button>`}<button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">Save</button></div>${[...runs.values()].some(r=>r.teamId===t.id)?`<div class="hint">This team has done runs, so it can't be removed.</div>`:""}`}</div>`;
     const close=v=>{d.remove();document.removeEventListener("keydown",kd,true);res(v)}; const kd=e=>{if(e.key==="Escape"){e.stopPropagation();close(false)}};
     d.querySelector("#et-vehicle").addEventListener("change",e=>{ if(/Transit|trailer|Luton/i.test(e.target.value)) d.querySelector("#et-large").checked=true });
@@ -651,7 +652,7 @@ function editStop(s){
      <div class="row"><div class="field"><label for="e-phone">Phone</label><input id="e-phone" type="text" inputmode="tel" value="${esc(s.phone)}"></div><div class="field" style="flex:0 1 90px"><label for="e-trees">Trees</label><input id="e-trees" type="number" min="1" max="20" value="${esc(s.trees)}"></div></div>
      <div class="row"><div class="field"><label for="e-email">Email</label><input id="e-email" type="email" value="${esc(s.email)}"></div><div class="field" style="flex:0 1 110px"><label for="e-paid">Paid (£)</label><input id="e-paid" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(s.paid??"")}"></div></div>
      <div class="field"><label for="e-where">Where the tree is</label><input id="e-where" type="text" value="${esc(s.where)}"></div>
-     <label style="display:flex;gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="e-large" ${s.large?"checked":""}> Large tree (only teams set up for large trees can collect it)</label>
+     <label style="display:${LG()?"flex":"none"};gap:6px;align-items:center;font-weight:600"><input type="checkbox" id="e-large" ${s.large?"checked":""}> Large tree (only teams set up for large trees can collect it)</label>
      <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-m="0">Cancel</button><button class="btn" data-m="1">${isNew?"Add collection":"Save"}</button></div></div>`;
     const geoMsg=()=>{ const g=geocode($("#e-pc").value); const el=$("#e-geo");
       if(!normPC($("#e-pc").value)){ el.textContent=""; return null }
@@ -685,7 +686,7 @@ function signupCard(dis){ const ns=newSignups(), open=settings.signupOpen!==fals
    <div class="row" style="margin-top:8px">${open?`<button class="btn" data-cpsignup>Copy sign-up link</button>`:""}<button class="btn ${open?"ghost":""}" data-suopen="${open?"0":"1"}" ${dis}>${open?"Close sign-ups":"Open sign-ups"}</button><button class="btn ghost" data-newteam ${dis}>Add a team</button></div>
    <h3 style="${ns.length?"color:var(--bad)":""}">Sign-ups to approve (${ns.length})</h3>
    ${ns.length?`<div class="list">${ns.map(s=>`<div class="miss"><div class="top"><b>${esc(s.name)} · ${s.capacity} trees per load</b><span class="chip warn">Sent ${esc(tm(s.submittedAt))}</span></div>
-     <div class="hint">${esc(s.contact)} · ${esc(s.phone)} · ${esc(s.email)}<br>${esc(s.vehicle)}${s.large?" · Can take large trees":""} · ${esc(slot(s))}</div>
+     <div class="hint">${esc(s.contact)} · ${esc(s.phone)} · ${esc(s.email)}<br>${esc(s.vehicle)}${s.large&&LG()?" · Can take large trees":""} · ${esc(slot(s))}</div>
      <div class="steps"><button class="btn" data-sureview="${esc(s.id)}" ${dis}>Review</button></div></div>`).join("")}</div>`:`<div class="hint">No sign-ups waiting.</div>`}</div>` }
 const TEAM_URL=(DRIVER_URL||location.href.split("#")[0].replace(/[^/]*$/,"")+"driver.html").replace(/driver\.html$/,"team.html");
 const teamLink=t=>t.teamToken?`${TEAM_URL}#${t.teamToken}`:"";
@@ -727,7 +728,7 @@ function teamWhere(t,r){ const p=mapPos.find(x=>x.team_id===t.id); if(p&&Date.no
 function drawMap(){ if(!MAP||!window.L) return; mapLayers.clearLayers();
   for(let k=0;k<8;k++){ const a=k*Math.PI/4; L.polyline([[DEPOT.lat,DEPOT.lon],[DEPOT.lat+Math.cos(a)*AREA.max/111,DEPOT.lon+Math.sin(a)*AREA.max/(111.32*Math.cos(52.35*Math.PI/180))]],{color:"#888",weight:1,opacity:.35,dashArray:"4 6",interactive:false}).addTo(mapLayers) }
   for(const r of [AREA.core,AREA.max]) L.circle([DEPOT.lat,DEPOT.lon],{radius:r*1000,color:"#7b1fa2",weight:1.5,opacity:r===AREA.core?.6:.35,fill:false,dashArray:"6 6",interactive:false}).addTo(mapLayers);
-  const tt=s=>`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large?" · large":""}`;
+  const tt=s=>`${esc(s.name)} · ${s.trees} tree${s.trees>1?"s":""}${s.large&&LG()?" · large":""}`;
   for(const s of stops.values()){ if(s.lat==null) continue;
     if(s.status==="Collected") L.circleMarker([s.lat,s.lon],{radius:3,color:"#1e8e3e",weight:1,fillColor:"#1e8e3e",fillOpacity:.8}).bindTooltip(`Collected: ${tt(s)}`).addTo(mapLayers);
     else if((s.status===""&&!outArea(s))||s.status==="Missed") L.circleMarker([s.lat,s.lon],{radius:s.large?5:4,color:"#c62828",weight:s.large?2:1,fillColor:"#e53935",fillOpacity:.7}).bindTooltip(`${s.status==="Missed"?"Missed":"To collect"}: ${tt(s)}`).addTo(mapLayers);
@@ -805,7 +806,8 @@ function renderSettings(main){
    <div class="row" style="margin-top:8px;align-items:center"><button class="btn" data-saveev ${dis}>Save days</button><span class="hint">Now: <b>${esc(evRange(true))} ${EV_YEAR}</b></span></div></div>
   <div class="card" style="margin-top:10px"><h2>Load planning</h2>
    <div class="hint" style="margin-bottom:8px">When a team starts a run, this much of their expected load is planned as one route. After that they're given the next nearest tree on the way back, one at a time, until they tap <b>Van full</b>. Planning less means fewer jobs put back on the list when a van fills early. Each team's expected load is learned from their earlier runs.</div>
-   <div class="row"><div class="field" style="flex:0 1 220px"><label for="plan-pct">Plan ahead (% of expected load)</label><input id="plan-pct" type="number" min="50" max="120" step="5" value="${planPct()}"></div><button class="btn" data-saveplanpct ${dis}>Save</button></div></div>
+   <div class="row"><div class="field" style="flex:0 1 220px"><label for="plan-pct">Plan ahead (% of expected load)</label><input id="plan-pct" type="number" min="50" max="120" step="5" value="${planPct()}"></div><button class="btn" data-saveplanpct ${dis}>Save</button></div>
+   <label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;margin-top:10px"><input type="checkbox" data-largeon ${LG()?"checked":""} ${dis} style="margin-top:3px"><span>Use large-tree matching<br><span class="hint" style="font-weight:400">When on, trees marked large only go to teams that can take them, and large-tree labels and buttons show. When off, any team can be sent to any tree; large-tree details are still recorded, just hidden.</span></span></label></div>
   <div class="card" style="margin-top:10px"><h2>Team limit</h2>
    <div class="hint" style="margin-bottom:8px">Most teams allowed, counting approved teams and sign-ups waiting. When it's reached the sign-up page says you have all the teams you need. Now: <b>${teams.size}</b> teams${newSignups().length?` + ${newSignups().length} waiting`:""}.</div>
    <div class="row" style="align-items:flex-end"><div class="field" style="flex:0 1 140px"><label for="su-max">Team limit</label><input id="su-max" type="number" min="1" max="200" value="${MAX_TEAMS()}"></div><button class="btn" data-sumax ${dis}>Save</button></div></div>
@@ -942,7 +944,7 @@ function renderTeams(main){
    ${all.some(t=>!t.teamToken)?`<div class="row" style="margin-top:8px"><button class="btn" data-alllinks ${dis}>Create links for ${all.filter(t=>!t.teamToken).length} team${all.filter(t=>!t.teamToken).length===1?"":"s"}</button></div>`:""}</div>
   <h3>Teams (${all.length})</h3>
   ${all.length?`<div class="tw"><table><thead><tr><th>Team</th><th>Load &amp; done</th><th>Agreed times</th><th>Team link</th></tr></thead><tbody>
-   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.large?' <span class="chip out">Large trees</span>':""}<div class="hint ppl">${[{name:t.contact,phone:t.phone,email:t.email},...(t.members||[])].filter(m=>m&&(m.name||m.phone||m.email)).map(m=>`<div>${[m.name,m.phone,m.email].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join(" · ")}</div>`).join("")}${t.vehicle?`<div>${esc(t.vehicle)}</div>`:""}${t.notes?`<div><i>${esc(t.notes)}</i></div>`:""}</div></td><td><b>${t.capacity}</b> per load${t.capEst!=null?`<br><span class="hint">Learned Avg<br><b>${t.capEst}</b> Per Load</span>`:""}<div style="margin-top:6px">${n} run${n===1?"":"s"} · ${col} tree${col===1?"":"s"}</div>${b?`<span class="chip out">Out</span>`:""}</td><td><div class="slotl">${(t.slots||[]).length?[...t.slots].sort((a,b)=>normDay(a.day).localeCompare(normDay(b.day))).map(s=>`<div><b>${esc(dayLbl(s.day))}</b> ${esc(s.from)}–${esc(s.to)}</div>`).join(""):'<div class="hint">No times agreed</div>'}</div>${nowSlot(t)?'<span class="chip done">Now</span>':'<span class="chip bad">Outside hours</span>'}</td><td>${teamLinkCell(t,dis)}<div class="tbtns" style="margin-top:6px"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit Team</button><button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button></div></td></tr>`}).join("")}</tbody></table></div>`
+   ${all.map(t=>{const n=[...runs.values()].filter(r=>r.teamId===t.id).length, b=teamBusy(t.id), col=[...stops.values()].reduce((a,s)=>a+(s.status==="Collected"&&runs.get(s.run)?.teamId===t.id?s.trees:0),0);return `<tr><td><b>${esc(t.name)}</b>${t.large&&LG()?' <span class="chip out">Large trees</span>':""}<div class="hint ppl">${[{name:t.contact,phone:t.phone,email:t.email},...(t.members||[])].filter(m=>m&&(m.name||m.phone||m.email)).map(m=>`<div>${[m.name,m.phone,m.email].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join(" · ")}</div>`).join("")}${t.vehicle?`<div>${esc(t.vehicle)}</div>`:""}${t.notes?`<div><i>${esc(t.notes)}</i></div>`:""}</div></td><td><b>${t.capacity}</b> per load${t.capEst!=null?`<br><span class="hint">Learned Avg<br><b>${t.capEst}</b> Per Load</span>`:""}<div style="margin-top:6px">${n} run${n===1?"":"s"} · ${col} tree${col===1?"":"s"}</div>${b?`<span class="chip out">Out</span>`:""}</td><td><div class="slotl">${(t.slots||[]).length?[...t.slots].sort((a,b)=>normDay(a.day).localeCompare(normDay(b.day))).map(s=>`<div><b>${esc(dayLbl(s.day))}</b> ${esc(s.from)}–${esc(s.to)}</div>`).join(""):'<div class="hint">No times agreed</div>'}</div>${nowSlot(t)?'<span class="chip done">Now</span>':'<span class="chip bad">Outside hours</span>'}</td><td>${teamLinkCell(t,dis)}<div class="tbtns" style="margin-top:6px"><button class="btn ghost tsm" data-editteam="${esc(t.id)}" ${dis}>Edit Team</button>${LG()?`<button class="btn ghost tsm" data-tlarge="${esc(t.id)}" ${dis}>${t.large?"Stop large trees":"Allow large trees"}</button>`:""}</div></td></tr>`}).join("")}</tbody></table></div>`
    :`<div class="empty">No teams yet. Add them above, or send Claude the volunteer list to load.</div>`}`;
 }
 
@@ -1058,6 +1060,8 @@ document.addEventListener("change",async e=>{ const dm=e.target.closest&&e.targe
     if(!ok||!await patch("settings/main",{mode:live?"live":"demo",modeChangedAt:new Date().toISOString(),modeChangedBy:me||""})){ mt.checked=!live; return }
     toast(live?"Live: hours are now enforced":"Demo mode on"); render(); return }
   if(dm){ if(isLive()) return; const on=dm.checked; if(await patch("settings/main",{demoAnyTime:on})) toast(on?"Demo: teams can start any time":"Demo: team hours now enforced, so you can test early-start requests"); else dm.checked=!on; return }
+  const lgc=e.target.closest&&e.target.closest("input[data-largeon]");
+  if(lgc){ const on=lgc.checked; if(await patch("settings/main",{largeOn:on})) toast(on?"Large-tree matching on":"Large-tree matching off: any team can take any tree"); else lgc.checked=!on; return }
   const c=e.target.closest&&e.target.closest("input[data-evday]"); if(!c) return;
   if(c.checked&&document.querySelectorAll("input[data-evday]:checked").length>7){ c.checked=false; toast("Up to 7 days") } });
 document.addEventListener("click",async e=>{
