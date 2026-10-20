@@ -117,9 +117,9 @@ const short=a=>String(a||"").replace(/, Worcestershire$/,"");
 let data=null, busy=false, token="", geoOK=false, view="home", lastOk=0, loadSeq=0, loading=false, loadAgain=null;
 try{ if(sessionStorage.getItem("tr-gohome")){ view="gohome"; sessionStorage.removeItem("tr-gohome") } }catch(_){}   // came from the driver page Home button: skip the thank-you
 const RK="role:"+teamToken; let role=null; try{role=localStorage.getItem(RK)}catch(_){}
-const crew=()=>role==="crew";
+const crew=()=>false;   // every phone on the link can do everything (no driver/crew split)
 function setRole(v){ role=v; try{localStorage.setItem(RK,v)}catch(_){} render() }
-function roleBar(){ return `<div class="role"><span>This phone: <b>${crew()?"Crew (helper)":"Driver (in charge)"}</b></span><button data-role>Change</button></div>` }
+function roleBar(){ return "" }
 function rolePick(){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Who's using this phone?</h2><div class="sub">Two of you can open the same link. The driver's phone is in charge; the crew's phone helps.</div>
    <button class="btn" data-r="driver">Driver: in charge</button><div class="sub">Navigation, next job, van full and unloading. Works on its own if the other phone goes quiet.</div>
@@ -244,7 +244,7 @@ async function load(withPos){
   else if(!EV.got){ const e=await rpc("event_info",{},true); if(e&&e.eventStart){ setEV(e); EV.got=1 } }
   data=d; token=d.run?.token||""; render();
   } finally { loading=false; if(loadAgain!==null){ const w=loadAgain; loadAgain=null; setTimeout(()=>load(w),0) } }
-  if(!role&&data&&!data.error&&!rolePick.open){ rolePick.open=true; const v=await rolePick(); rolePick.open=false; setRole(v) } }
+  }
 function phase(){ const r=data.run, lo=data.team&&data.team.loggedOffAt; if(!r) return lo&&Date.now()-new Date(lo)<12*3600e3?"done":"home";
   if(r.state==="out"&&r.mode==="live") return "live";
   if(r.state==="out") return "office";
