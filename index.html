@@ -795,8 +795,10 @@ function renderSettings(main){
   if(sub==="plan"){ renderPlan(main,bar); return }
   if(sub==="run"){ renderDispatch(main); main.insertAdjacentHTML("afterbegin",bar+`<div class="hint" style="margin-bottom:8px">Most teams use their team link. Build a run here for a team with no smartphone or poor signal, Sunday mop-up, an authorised out-of-area pickup or a big vehicle on a dense estate.</div>`); return }
   loadOfficeUsers();
+  loadRole();
   main.innerHTML=bar+`<div class="card"><h2>Collection days &amp; mode</h2>
-   <div class="row" style="align-items:center;gap:14px;margin-bottom:6px"><label class="tgl" aria-label="Mode: Demo or Live"><b style="${isLive()?"color:var(--muted);opacity:.5":"color:#1e7a4c"}">Demo</b><input type="checkbox" data-modetoggle ${isLive()?"checked":""} ${dis}><span class="tgl-s" aria-hidden="true"></span><b style="${isLive()?"background:var(--yellow);color:#1d2a26;padding:2px 10px;border-radius:8px":"color:var(--muted);opacity:.5"}">Live</b></label><label style="display:flex;gap:6px;align-items:center;font-weight:600${isLive()?";opacity:.45":""}" title="${isLive()?"Live always enforces team hours":"Untick to test the hours rule, early-start requests and approvals"}"><input type="checkbox" data-demoany ${isLive()?"checked disabled":(settings.demoAnyTime===false?"":"checked")} ${isLive()?"":dis}> Allow out-of-hours starts <span class="hint" style="font-weight:400">(Demo mode only)</span></label></div>
+   ${realStartBlock(dis)}
+   <div class="row" style="align-items:center;gap:14px;margin-bottom:6px"><label class="tgl" aria-label="Mode: Demo or Live"><b style="${isLive()?"color:var(--muted);opacity:.5":"color:#1e7a4c"}">Demo</b><input type="checkbox" data-modetoggle ${isLive()?"checked":""} ${dis||modeLock()?"disabled":""}><span class="tgl-s" aria-hidden="true"></span><b style="${isLive()?"background:var(--yellow);color:#1d2a26;padding:2px 10px;border-radius:8px":"color:var(--muted);opacity:.5"}">Live</b></label><label style="display:flex;gap:6px;align-items:center;font-weight:600${isLive()?";opacity:.45":""}" title="${isLive()?"Live always enforces team hours":"Untick to test the hours rule, early-start requests and approvals"}"><input type="checkbox" data-demoany ${isLive()?"checked disabled":(settings.demoAnyTime===false?"":"checked")} ${isLive()?"":dis}> Allow out-of-hours starts <span class="hint" style="font-weight:400">(Demo mode only)</span></label></div>${modeLock()?`<div class="hint" style="margin:-2px 0 8px;color:var(--bad)">${esc(modeLock())}</div>`:""}
    <div class="hint" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line)"><b>Demo:</b> practice data, customer emails come to you, and teams can start runs at any time (untick <b>Allow out-of-hours starts</b> to test the hours rule and early-start approvals). <b>Live:</b> customer emails go to customers, and teams can only start a run on a collection day, from 15 minutes before their agreed time to the end of it, unless you approve an early start (Needs attention). A run that's already going can always be finished.</div>
    <div class="hint" style="margin-bottom:6px">Tick up to 7 days in January, e.g. Thursday to Tuesday plus a Thursday mop-up. Teams give their times for each ticked day; emails, the sign-up page and the team page all use these dates.</div>
    ${evCal(dis)}
@@ -823,7 +825,19 @@ function renderSettings(main){
    ${(()=>{const st=dropStats(); return `<div class="list" style="margin-top:8px">${dropList().map(p=>{const o=st[p.id]||{today:0,all:0}; return `<div class="miss"><div class="top"><b>${esc(p.name)}</b>${p.id==="hq"||p.id===mainDropId()?'<span class="chip done">Main drop-off</span>':p.active===false?'<span class="chip grey">Switched off</span>':'<span class="chip done">On</span>'}</div><div>${esc(p.address||"")}${p.postcode?", "+esc(p.postcode):""}</div>${p.hours||p.notes?`<div class="hint">${esc([p.hours,p.notes].filter(Boolean).join(" · "))}</div>`:""}<div class="hint">Trees unloaded: <b>${o.today}</b> today · <b>${o.all}</b> this collection</div><div class="steps"><button class="btn ghost" data-editdrop="${esc(p.id)}" ${dis}>Edit</button>${p.id==="hq"||p.id===mainDropId()?"":`<button class="btn ghost" data-maindrop="${esc(p.id)}" ${dis}>Make main</button><button class="btn ghost" data-togdrop="${esc(p.id)}" ${dis}>${p.active===false?"Switch on":"Switch off"}</button><button class="btn ghost" data-deldrop="${esc(p.id)}" ${dis} style="color:var(--bad);border-color:var(--bad)">Remove</button>`}</div></div>`}).join("")}</div>`})()}
    <div class="row" style="margin-top:8px"><button class="btn" data-adddrop ${dis}>Add a drop-off point</button></div></div>`;
 }
-let officeUsers=null, ouAt=0;
+let officeUsers=null, ouAt=0, officeRole=null, roleAt=0;
+async function loadRole(){ if(Date.now()-roleAt<60000) return; roleAt=Date.now(); const sb=window.treerunSupabase; if(!sb) return;
+  const {data,error}=await sb.rpc("office_role"); if(error||!data) return; if(officeRole!==data.role){ officeRole=data.role; if(view.tab==="settings") render() } }
+const isBoss=()=>officeRole==="owner"||officeRole==="deputy";
+function modeLock(){ const st=settings||{};
+  if(isLive()){ if(st.collectionsStartedAt&&officeRole!=="owner") return `Collections started ${tm(st.collectionsStartedAt)}: only Jon can switch back to Demo.`; if(!isBoss()) return "Only Jon or Hannah can switch back to Demo."; return "" }
+  if(!st.realStartedAt) return "Test data is still loaded. Jon clears it with Start Real Collection before anyone can go Live.";
+  if(!isBoss()) return "Only Jon or Hannah can go Live."; return "" }
+function realStartBlock(dis){ const st=settings||{}, who=e=>esc(String(e||"").replace(/@.*/,""));
+  const line=[st.realStartedAt?`Test data cleared ${esc(tm(st.realStartedAt))}${st.realStartedBy?" by "+who(st.realStartedBy):""}`:"<b>Test data still loaded</b>",
+    st.liveAt&&isLive()?`Live since ${esc(tm(st.liveAt))}${st.liveBy?" ("+who(st.liveBy)+")":""}`:"",
+    st.collectionsStartedAt?`<b>Collections started ${esc(tm(st.collectionsStartedAt))}</b>`:""].filter(Boolean).join(" · ");
+  return `<div class="hint" style="margin-bottom:8px">${line}</div>${!st.realStartedAt&&officeRole==="owner"?`<div class="row" style="margin-bottom:10px"><button class="btn bad" data-realstart ${dis}>Start Real Collection: Clear Test Data</button></div>`:""}` }
 async function loadOfficeUsers(force){ if(!force&&Date.now()-ouAt<60000) return; ouAt=Date.now(); const sb=window.treerunSupabase; if(!sb) return;
   const {data,error}=await sb.rpc("office_users_list"); if(error||!data||!data.ok) return; officeUsers=data; if(view.tab==="settings") render() }
 const PLAN_ROWS=[
@@ -943,6 +957,7 @@ function localApply(path,data,whole){   // show a saved change straight away; th
       const k=c==="stops"?parseInt(id.slice(1),10):id; const cur=m.get(k); if(!cur&&!whole) return; const v=whole?{...data}:{...cur,...data}; m.set(k,c==="stops"?attachHelpers(v):v) }
     if(c==="stops"||c==="settings") ISO=null; clearTimeout(laT); laT=setTimeout(render,50) }catch(e){} }
 function fail(e){ const m=String(e&&e.message||"");
+  const rule=m.match(/(Only Jon[^".]*|Clear the test data first[^".]*|This can only be changed by the system|Collections have started[^".]*)/); if(rule){ toast(rule[1]); return false }
   if(/row-level security|permission denied|42501/i.test(m)){ canWrite=false; $("#ro").hidden=false; render() }
   else toast(/jwt|expired|session/i.test(m)?"Your sign-in has expired. Reload the page and sign in again.":"Couldn't save. Check the connection and tap again.");
   return false }
@@ -1037,7 +1052,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("change",async e=>{ const dm=e.target.closest&&e.target.closest("input[data-demoany]");
   const mt=e.target.closest&&e.target.closest("input[data-modetoggle]");
-  if(mt){ const live=mt.checked; let ok;
+  if(mt){ const live=mt.checked; let ok; if(modeLock()){ mt.checked=!live; toast(modeLock()); return }
     if(live) ok=await typeBox("Go Live?","Customer emails will go to real customers, and teams can only start runs in their agreed times. Only do this once the real address list is loaded. Type LIVE to confirm.","LIVE","Go Live");
     else ok=await typeBox("Switch back to Demo?","Customer emails will stop going to customers and come to you instead, so real customers won't hear from us. Teams can start runs at any time (unless Allow out-of-hours starts is unticked). Runs already going carry on. Only do this if you're not running the real collection. Type DEMO to confirm.","DEMO","Switch to Demo");
     if(!ok||!await patch("settings/main",{mode:live?"live":"demo",modeChangedAt:new Date().toISOString(),modeChangedBy:me||""})){ mt.checked=!live; return }
@@ -1151,6 +1166,11 @@ async function act(b,d){
     const lost=[...teams.values()].filter(t=>(t.slots||[]).some(s=>EVENT_DAYS[normDay(s.day)]&&!v.includes(normDay(s.day))));
     if(lost.length&&!await confirmBox("Remove days teams have times on?",`${lost.length} team${lost.length===1?" has":"s have"} agreed times on a day you've unticked (${lost.slice(0,4).map(t=>t.name).join(", ")}${lost.length>4?"…":""}). Those times will stop counting.`,"Save days")) return;
     if(await patch("settings/main",{eventDays:v})){ view.evYear=null; toast(`Collection days saved: ${v.length} day${v.length===1?"":"s"}`) } return }
+  if("realstart" in d){ if(officeRole!=="owner"){ toast("Only Jon can do this"); return }
+    const ok=await typeBox("Start the real collection?","This clears all the test data: every address, run, photo and team position, plus each team's learned load size, paused state and early-start requests. Teams (with their links and times), sign-ups and all settings stay. A backup copy is kept. It can only be done once and only Jon can undo it. The app goes to Demo: load the real list next, then Go Live. Type CLEAR to confirm.","CLEAR","Clear test data"); if(!ok) return;
+    b.disabled=true; const {data:r,error}=await window.treerunSupabase.rpc("office_clear_test_data",{p_confirm:"CLEAR"}); b.disabled=false;
+    if(error||!r||r.error){ toast(r&&r.error==="collections_started"?"Collections have started: this is locked":r&&r.error==="already_done"?"Test data has already been cleared":r&&r.error==="owner_only"?"Only Jon can do this":"Couldn't clear the test data. Try again."); return }
+    toast(`Test data cleared: ${r.stops} addresses and ${r.runs} runs removed. Teams kept.`); return }
   if(d.setmode){ const live=d.setmode==="live";
     if(live){ const w=await typeBox("Go Live?","Customer emails will go to real customers, and teams can only start runs in their agreed times. Only do this once the real address list is loaded. Type LIVE to confirm.","LIVE","Go Live"); if(!w) return }
     else if(!await confirmBox("Switch to Demo?","Hours limits stop and customer emails come to you instead of the customer.","Switch to Demo")) return;
