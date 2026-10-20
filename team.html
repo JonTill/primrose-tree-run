@@ -172,14 +172,14 @@ function treesAsk(s){return new Promise(res=>{const m=document.createElement("di
     if(e.target.closest("[data-x]")){m.remove(); res(null)} }); document.body.appendChild(m)})}
 function confirmAct(s,v,why){return new Promise(res=>{const m=document.createElement("div");m.className="modal"; const b0=s.booked||s.trees||1, cf=String(why||"").startsWith("Can't find address"), cfn=cf?String(why).replace(/^Can't find address:?\s*/,""):"";
   const t=v==="Collected"?"Confirm collected":v==="out"?"Undo this stop?":cf?"Can't find the address":"Confirm not collected";
-  const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. Any extra trees here?</div>
-   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="0" max="${Math.max(0,30-b0)}" value="0"><button data-d="1" aria-label="One more">+</button></div>
+  const line=v==="Collected"?`Booked: <b>${b0}</b> tree${b0===1?"":"s"}. How many did you collect here?</div>
+   <div class="num"><button data-d="-1" aria-label="One fewer">−</button><input id="tq" type="number" inputmode="numeric" min="1" max="30" value="${b0}" aria-label="Trees collected here"><button data-d="1" aria-label="One more">+</button></div>
    <div class="sub" id="tqt" style="text-align:center;font-size:1rem">`:v==="Missed"?(cf?`Reason: <b>Can't find the address</b>.${cfn?` Note: <b>${esc(cfn)}</b>.`:""} The office will check the address and contact the customer. You can add a photo next if you want.`:"Reason: <b>No tree out</b>. You'll be asked for a photo next."):v==="Skipped"?(why==="Van full"?"Reason: <b>Van full</b>. This one and any stops left on your run go back on the list for other teams. Then head back to unload.":`Reason: <b>${esc(why||"")}</b>. It goes back on the list for another team.`):"It goes back to not done.";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>${t}</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div><div class="sub" style="font-size:1rem">${line}</div>
    <button class="btn" data-ok>Confirm</button><button class="btn ghost" data-x>Cancel</button></div>`;
-  const inp=m.querySelector("#tq"), tot=()=>{ if(!inp) return; const n=parseInt(inp.value,10)||0; m.querySelector("#tqt").innerHTML=`Total collected here: <b>${b0+n}</b> tree${b0+n===1?"":"s"}`}; tot(); inp&&inp.addEventListener("input",tot);
-  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d&&inp){inp.value=Math.min(Math.max(0,30-b0),Math.max(0,(parseInt(inp.value,10)||0)+(+d.dataset.d)));tot();return}
-    if(e.target.closest("[data-ok]")){ let n=0; if(inp){n=parseInt(inp.value,10); if(!(n>=0&&n<=29)){inp.focus();return}} m.remove(); return res(v==="Collected"?{extra:n,total:b0+n}:true)}
+  const inp=m.querySelector("#tq"), tot=()=>{ if(!inp) return; const n=parseInt(inp.value,10)||0, df=n-b0; m.querySelector("#tqt").innerHTML=df===0?"Same as booked":df>0?`<b>${df}</b> more than booked`:`<b>${-df}</b> fewer than booked`}; tot(); inp&&inp.addEventListener("input",tot);
+  m.addEventListener("click",e=>{const d=e.target.closest("[data-d]"); if(d&&inp){inp.value=Math.min(30,Math.max(1,(parseInt(inp.value,10)||b0)+(+d.dataset.d)));tot();return}
+    if(e.target.closest("[data-ok]")){ let n=b0; if(inp){n=parseInt(inp.value,10); if(!(n>=1&&n<=30)){inp.focus();return}} m.remove(); return res(v==="Collected"?{extra:n-b0,total:n}:true)}
     if(e.target.closest("[data-x]")){m.remove();res(false)} }); document.body.appendChild(m)})}
 function notWhy(s){return new Promise(res=>{const m=document.createElement("div");m.className="modal";
   m.innerHTML=`<div class="box" role="dialog" aria-modal="true"><h2>Why couldn't you collect it?</h2><div><b>${esc(s.name)}</b><br>${esc(short(s.address))}, ${esc(s.postcode)}</div>
@@ -338,7 +338,7 @@ document.addEventListener("click",async e=>{
     if(v2==="Not"){ const nw=await notWhy(cur); if(!nw) return; v=nw.v; why=nw.why;
       if(crew()&&why==="Van full"){ toast("Van full: ask the driver to tap Van full on their phone"); return }
       if(!await confirmAct(cur,v,why)) return }
-    else { const r=await confirmAct(cur,"Collected"); if(!r) return; if(r.extra>0) total=r.total }
+    else { const r=await confirmAct(cur,"Collected"); if(!r) return; if(r.extra!==0) total=r.total }
     busy=true; mk.disabled=true;
     const res=total?await rpc("driver_trees",{p_token:token,p_ref:cur.ref,p_trees:total,p_from:"out"}):await rpc("driver_set",{p_token:token,p_ref:cur.ref,p_status:v,p_reason:why,p_from:"out"}); busy=false;
     if(!res){render();return} if(res.error){toast(res.error==="already"?"Already marked on the other phone":res.error==="moved"?"The office has moved this one. Getting your next job.":res.error==="not_found"?"This run has finished. Updating your screen.":"Couldn't save.");await load();return}
