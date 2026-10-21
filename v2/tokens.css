@@ -1,0 +1,4 @@
+/* Primrose colours and fonts, shared by every page (light and dark). */
+:root{--bg:#f3f7f5;--surface:#fff;--fg:#1d2a26;--muted:#6a6d71;--line:#d5e0db;--green:#00905e;--yellow:#ffde0e;--blue:#00587B;--bad:#b3261e;--bad-soft:#fbe3e1;--ok-soft:#dcf1e6;--skip:#8a5a00;--skip-soft:#fff3d6;
+--display:"Nunito","Trebuchet MS",Arial,sans-serif;--body:"Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a17;--surface:#172420;--fg:#e8f0ec;--muted:#a9b4b0;--line:#2a3a35;--green:#3fc08f;--blue:#81b8da;--bad:#ff8a80;--bad-soft:#3d1a18;--ok-soft:#173a2b;--skip:#f0b44c;--skip-soft:#3a2c10;color-scheme:dark}}
